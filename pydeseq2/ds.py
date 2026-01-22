@@ -411,29 +411,33 @@ class DeseqStats:
         if not self.quiet:
             print(f"... done in {end - start:.2f} seconds.\n", file=sys.stderr)
 
-        self.LFC.iloc[:, coeff_idx].update(
-            pd.Series(
-                np.array(lfcs)[:, coeff_idx],
-                index=self.dds.non_zero_genes,
-            )
+        new_lfc_values = np.array(lfcs)[:, coeff_idx]
+        new_se_values = np.array(
+            [
+                np.sqrt(np.abs(inv_hess[coeff_idx, coeff_idx]))
+                for inv_hess in inv_hessians
+            ]
         )
+        nan_mask = ~np.isfinite(new_lfc_values) | ~np.isfinite(new_se_values)
 
-        self.SE.update(
-            pd.Series(
-                np.array(
-                    [
-                        np.sqrt(np.abs(inv_hess[coeff_idx, coeff_idx]))
-                        for inv_hess in inv_hessians
-                    ]
-                ),
-                index=self.dds.non_zero_genes,
+        if nan_mask.any():
+            warnings.warn(
+                f"{nan_mask.sum()} gene(s) had NaN/infinite values during LFC shrinkage,"
+                " their LFCs and SEs were not updated.",
+                UserWarning,
+                stacklevel=2,
             )
-        )
 
-        self._LFC_shrink_converged = pd.Series(np.nan, index=self.dds.var_names)
-        self._LFC_shrink_converged.update(
-            pd.Series(l_bfgs_b_converged_, index=self.dds.non_zero_genes)
+        # Only update genes with valid (non-NaN) shrinkage results
+        valid_genes = self.dds.non_zero_genes[~nan_mask]
+        self.LFC.loc[valid_genes, coeff] = new_lfc_values[~nan_mask]
+        self.SE.loc[valid_genes] = new_se_values[~nan_mask]
+
+        self._LFC_shrink_converged = pd.Series(
+            pd.array([pd.NA] * len(self.dds.var_names), dtype="boolean"),
+            index=self.dds.var_names,
         )
+        self._LFC_shrink_converged.loc[self.dds.non_zero_genes] = l_bfgs_b_converged_
 
         # Set a flag to indicate that LFCs were shrunk
         self.shrunk_LFCs = True
@@ -511,7 +515,7 @@ class DeseqStats:
             U2 = self.p_values[use]
             if not U2.empty:
                 result.loc[use, i] = false_discovery_control(U2, method="bh")
-        num_rej = (result < self.alpha).sum(0).to_numpy().astype(int)
+        num_rej = (result < self.alpha).sum(axis=0).to_numpy().astype(int)
         lowess_res = lowess(theta, num_rej, frac=1 / 5)
 
         if num_rej.max() <= 10:

@@ -657,7 +657,7 @@ class DeseqDataSet(ad.AnnData):
             # Calculate logcounts for x > 0 and take the mean for each gene
             log_counts = np.zeros_like(self.X, dtype=float)
             np.log(self.X, out=log_counts, where=self.X != 0)
-            logmeans = log_counts.mean(0)
+            logmeans = log_counts.mean(axis=0)
 
             # Determine which genes are usable (finite logmeans)
             self.filtered_genes = (~np.isinf(logmeans)) & (logmeans > 0)
@@ -705,7 +705,7 @@ class DeseqDataSet(ad.AnnData):
             raise ValueError("Counts matrix 'X' is None, cannot fit size factors.")
 
         end = time.time()
-        self.var["_normed_means"] = self.layers["normed_counts"].mean(0)
+        self.var["_normed_means"] = self.layers["normed_counts"].mean(axis=0)
 
         if not self.quiet:
             print(f"... done in {end - start:.2f} seconds.\n", file=sys.stderr)
@@ -793,7 +793,9 @@ class DeseqDataSet(ad.AnnData):
             dispersions_, self.min_disp, self.max_disp
         )
 
-        self.var["_genewise_converged"] = np.full(self.n_vars, np.nan)
+        self.var["_genewise_converged"] = pd.array(
+            [pd.NA] * self.n_vars, dtype="boolean"
+        )
         self.var.loc[self.var["non_zero"], "_genewise_converged"] = l_bfgs_b_converged_
 
     def fit_dispersion_trend(self, vst: bool = False) -> None:
@@ -919,7 +921,7 @@ class DeseqDataSet(ad.AnnData):
             dispersions_, self.min_disp, self.max_disp
         )
 
-        self.var["_MAP_converged"] = np.full(self.n_vars, np.nan)
+        self.var["_MAP_converged"] = pd.array([pd.NA] * self.n_vars, dtype="boolean")
         self.var.loc[self.var["non_zero"], "_MAP_converged"] = l_bfgs_b_converged_
 
         # Filter outlier genes for which we won't apply shrinkage
@@ -980,7 +982,7 @@ class DeseqDataSet(ad.AnnData):
         self.obsm["_mu_LFC"] = mu_
         self.obsm["_hat_diagonals"] = hat_diagonals_
 
-        self.var["_LFC_converged"] = np.full(self.n_vars, np.nan)
+        self.var["_LFC_converged"] = pd.array([pd.NA] * self.n_vars, dtype="boolean")
         self.var.loc[self.var["non_zero"], "_LFC_converged"] = converged_
 
     def calculate_cooks(self) -> None:
@@ -1098,7 +1100,7 @@ class DeseqDataSet(ad.AnnData):
 
         cooks_outlier[cooks_outlier] = (
             self.X[:, cooks_outlier] > self.X[:, cooks_outlier][pos, np.arange(len(pos))]
-        ).sum(0) < 3
+        ).sum(axis=0) < 3
 
         if self.low_memory:
             del self.layers["cooks"]
@@ -1423,7 +1425,7 @@ class DeseqDataSet(ad.AnnData):
             sub_dds.uns["trend_coeffs"] = self.uns["trend_coeffs"]
         elif sub_dds.uns["disp_function_type"] == "mean":
             sub_dds.uns["mean_disp"] = self.uns["mean_disp"]
-        sub_dds.var["_normed_means"] = sub_dds.layers["normed_counts"].mean(0)
+        sub_dds.var["_normed_means"] = sub_dds.layers["normed_counts"].mean(axis=0)
         # Reshape in case there's a single gene to refit
         sub_dds.var["fitted_dispersions"] = sub_dds.disp_function(
             sub_dds.var["_normed_means"]

@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "pydeseq2"
-version = "0.5.3"
+version = "0.5.4"
 description = "A python implementation of DESeq2."
 readme = "README.md"
 license = { file = "LICENSE" }

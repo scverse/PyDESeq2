@@ -49,7 +49,7 @@ def deseq2_norm_fit(counts: pd.DataFrame | np.ndarray) -> tuple[np.ndarray, np.n
     # Compute gene-wise mean log counts
     with np.errstate(divide="ignore"):  # ignore division by zero warnings
         log_counts = np.log(counts)
-    logmeans = log_counts.mean(0)
+    logmeans = log_counts.mean(axis=0)
     # Filter out genes with -∞ log means
     filtered_genes = ~np.isinf(logmeans)
 
