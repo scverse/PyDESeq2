@@ -230,6 +230,7 @@ epub_exclude_files = ["search.html"]
 nitpick_ignore = [
     ("py:class", "pd.Series"),
     ("py:class", "pd.DataFrame"),
+    ("py:class", "pandas.core.frame.DataFrame"),
     ("py:class", "ndarray"),
     ("py:class", "numpy._typing._generic_alias.ScalarType"),
     ("py:class", "pydantic.main.BaseModel"),
