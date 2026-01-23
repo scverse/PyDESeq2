@@ -42,13 +42,13 @@ def vec_nb_nll(
             -logbinom
             + (counts[:, None] + alpha_neg1) * np.log(mu[:, None] + alpha_neg1)
             - (counts * np.log(mu))[:, None]
-        ).sum(0)
+        ).sum(axis=0)
     else:
         return n * alpha_neg1 * np.log(alpha) + (
             -logbinom
             + (counts[:, None] + alpha_neg1) * np.log(mu + alpha_neg1)
             - (counts[:, None] * np.log(mu))
-        ).sum(0)
+        ).sum(axis=0)
 
 
 def grid_fit_alpha(

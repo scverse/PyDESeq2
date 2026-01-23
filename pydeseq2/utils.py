@@ -222,7 +222,7 @@ def nb_nll(
             - logbinom
             + (counts + alpha_neg1) * np.log(mu + alpha_neg1)
             - (counts * np.log(mu))
-        ).sum(0)
+        ).sum(axis=0)
     else:
         return (
             n * alpha_neg1 * np.log(alpha)
@@ -849,7 +849,7 @@ def fit_rough_dispersions(
     y_hat = np.maximum(y_hat, 1)
     alpha_rde = (
         ((normed_counts - y_hat) ** 2 - y_hat) / ((num_samples - num_vars) * y_hat**2)
-    ).sum(0)
+    ).sum(axis=0)
     return np.maximum(alpha_rde, 0)
 
 
@@ -877,7 +877,7 @@ def fit_moments_dispersions(
     # Exclude genes with all zeroes
     normed_counts = normed_counts[:, ~(normed_counts == 0).all(axis=0)]
     # mean inverse size factor
-    s_mean_inv = (1 / size_factors).mean()
+    s_mean_inv = (1 / size_factors).mean(axis=0)
     mu = normed_counts.mean(0)
     sigma = normed_counts.var(0, ddof=1)
     # ddof=1 is to use an unbiased estimator, as in R
@@ -951,7 +951,7 @@ def robust_method_of_moments_disp(
             np.ndarray, trimmed_variance(normed_counts)
         )  # Since normed_counts is always 2D, trimmed_variance returns ndarray
 
-    m = normed_counts.mean(0)
+    m = normed_counts.mean(axis=0)
     alpha = (v - m) / m**2
     # cannot use the typical min_disp = 1e-8 here or else all counts in the same
     # group as the outlier count will get an extreme Cook's distance
@@ -1202,7 +1202,7 @@ def nbinomFn(
 
     nll = (
         counts * xbeta - (counts + size) * np.logaddexp(xbeta + offset, np.log(size))
-    ).sum(0)
+    ).sum(axis=0)
 
     return prior - nll
 
