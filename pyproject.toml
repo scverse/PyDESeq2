@@ -34,6 +34,9 @@ dependencies = [
   "formulaic-contrasts>=0.2.0",
   "matplotlib>=3.9.0",
 ]
+optional-dependencies.gpu = [
+  "torch>=2.0.0",
+]
 optional-dependencies.dev = [
   "pytest>=8.4.0",
   "pre-commit>=2.16.0",

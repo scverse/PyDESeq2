@@ -128,6 +128,16 @@ class DeseqDataSet(ad.AnnData):
         (default:
         :class:`DefaultInference <pydeseq2.default_inference.DefaultInference>`).
 
+    inference_type : str
+        Type of inference backend to use: ``"default"`` for CPU-based joblib
+        parallelization, or ``"gpu"`` for GPU-accelerated PyTorch inference.
+        Ignored if ``inference`` is provided. (default: ``"default"``).
+
+    device : str or None
+        Device for GPU inference (e.g. ``"cuda"``, ``"cuda:0"``, ``"cpu"``).
+        Only used when ``inference_type="gpu"``. If ``None``, auto-detects
+        CUDA availability. (default: ``None``).
+
     quiet : bool
         Suppress deseq2 status updates during fit.
 
@@ -224,6 +234,8 @@ class DeseqDataSet(ad.AnnData):
         beta_tol: float = 1e-8,
         n_cpus: int | None = None,
         inference: Inference | None = None,
+        inference_type: Literal["default", "gpu"] = "default",
+        device: str | None = None,
         quiet: bool = False,
         low_memory: bool = False,
     ) -> None:
@@ -320,20 +332,16 @@ class DeseqDataSet(ad.AnnData):
         self.logmeans: np.ndarray | None = None
         self.filtered_genes: np.ndarray | None = None
 
-        if inference:
-            if n_cpus:
-                if hasattr(inference, "n_cpus"):
-                    inference.n_cpus = n_cpus
-                else:
-                    warnings.warn(
-                        "The provided inference object does not have an n_cpus "
-                        "attribute, cannot override `n_cpus`.",
-                        UserWarning,
-                        stacklevel=2,
-                    )
+        if inference is not None:
+            self.inference = inference
+            if n_cpus and hasattr(inference, "n_cpus"):
+                inference.n_cpus = n_cpus
+        elif inference_type == "gpu":
+            from pydeseq2.torch_inference import TorchInference
 
-        # Initialize the inference object.
-        self.inference = inference or DefaultInference(n_cpus=n_cpus)
+            self.inference = TorchInference(device=device)
+        else:
+            self.inference = DefaultInference(n_cpus=n_cpus)
 
     @property
     def variables(self):
@@ -1154,7 +1162,7 @@ class DeseqDataSet(ad.AnnData):
             self.obsm["design_matrix"].values,
         )
         mde = self.inference.fit_moments_dispersions(
-            normed_counts, self.obs["size_factors"]
+            normed_counts, self.obs["size_factors"].values
         )
         alpha_hat = np.minimum(rde, mde)
 

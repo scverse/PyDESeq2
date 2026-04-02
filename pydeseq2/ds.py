@@ -191,20 +191,14 @@ class DeseqStats:
         self.shrunk_LFCs = False
         self.quiet = quiet
 
-        if inference:
-            if n_cpus:
-                if hasattr(inference, "n_cpus"):
-                    inference.n_cpus = n_cpus
-                else:
-                    warnings.warn(
-                        "The provided inference object does not have an n_cpus "
-                        "attribute, cannot override `n_cpus`.",
-                        UserWarning,
-                        stacklevel=2,
-                    )
-
-        # Initialize the inference object.
-        self.inference = inference or DefaultInference(n_cpus=n_cpus)
+        if inference is not None:
+            self.inference = inference
+            if n_cpus and hasattr(inference, "n_cpus"):
+                inference.n_cpus = n_cpus
+        elif hasattr(dds, "inference"):
+            self.inference = dds.inference
+        else:
+            self.inference = DefaultInference(n_cpus=n_cpus)
 
         # If the `refit_cooks` attribute of the dds object is True, check that outliers
         # were actually refitted.
