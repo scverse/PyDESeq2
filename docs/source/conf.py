@@ -238,6 +238,10 @@ nitpick_ignore = [
     # anndata re-exports AnnData from a private submodule; autodoc resolves the
     # runtime path for base-class references which intersphinx cannot remap.
     ("py:class", "anndata._core.anndata.AnnData"),
+    # pandas re-exports DataFrame from pandas.core.frame, but intersphinx only
+    # knows the public path (pandas.DataFrame). autodoc resolves type annotations
+    # like `pd.DataFrame` to the internal module path at runtime.
+    ("py:class", "pandas.core.frame.DataFrame"),
     ("py:class", "numpy._typing._generic_alias.ScalarType"),
     ("py:class", "pydantic.main.BaseModel"),
     ("py:class", "torch.nn.modules.module.Module"),
