@@ -113,6 +113,13 @@ napoleon_type_aliases = {
     "Inference": ":class:`Inference <pydeseq2.inference.Inference>`",
     "DefaultInference": ":class:`DefaultInference "
     "<pydeseq2.default_inference.DefaultInference>`",
+    # numpy short forms
+    "ndarray": ":class:`numpy.ndarray`",
+    "np.ndarray": ":class:`numpy.ndarray`",
+    # pandas short forms
+    "pd.DataFrame": ":class:`pandas.DataFrame`",
+    "pd.Series": ":class:`pandas.Series`",
+    "pandas.Index": ":class:`pandas.Index`",
 }
 
 # Add any paths that contain templates here, relative to this directory.
@@ -228,10 +235,13 @@ epub_exclude_files = ["search.html"]
 # documentation for each type specified
 # The following elements are the link that auto doc were not able to do
 nitpick_ignore = [
-    ("py:class", "pd.Series"),
-    ("py:class", "pd.DataFrame"),
+    # anndata re-exports AnnData from a private submodule; autodoc resolves the
+    # runtime path for base-class references which intersphinx cannot remap.
+    ("py:class", "anndata._core.anndata.AnnData"),
+    # pandas re-exports DataFrame from pandas.core.frame, but intersphinx only
+    # knows the public path (pandas.DataFrame). autodoc resolves type annotations
+    # like `pd.DataFrame` to the internal module path at runtime.
     ("py:class", "pandas.core.frame.DataFrame"),
-    ("py:class", "ndarray"),
     ("py:class", "numpy._typing._generic_alias.ScalarType"),
     ("py:class", "pydantic.main.BaseModel"),
     ("py:class", "torch.nn.modules.module.Module"),
