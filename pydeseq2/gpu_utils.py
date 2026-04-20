@@ -1,4 +1,8 @@
-"""GPU utility functions for PyDESeq2."""
+"""GPU utility functions for PyDESeq2.
+
+All tensor operations use float64. This requires CUDA or CPU;
+MPS (Apple Silicon) does not support float64 and is rejected.
+"""
 
 import warnings
 
@@ -19,6 +23,12 @@ def get_device(device: str | None = None) -> torch.device:
     torch.device
         Selected device.
     """
+    if device is not None and "mps" in str(device):
+        raise ValueError(
+            "MPS (Apple Silicon) is not supported because "
+            "TorchInference requires float64 throughout. "
+            "Use device='cpu' or device='cuda'."
+        )
     if device is None:
         if torch.cuda.is_available():
             return torch.device("cuda")

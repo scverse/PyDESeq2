@@ -1,7 +1,11 @@
 """GPU-accelerated inference backend for PyDESeq2 using PyTorch.
 
 Implements all methods from the :class:`~pydeseq2.inference.Inference` ABC
-with fully vectorized tensor operations across all genes simultaneously.
+using batched tensor operations across genes. Most operations are fully
+vectorized on GPU; the multi-factor IRLS non-convergence path falls back
+to the CPU ``irls_solver`` on a per-gene basis.
+
+Requires CUDA (float64 throughout). MPS is not supported.
 """
 
 import warnings
@@ -21,9 +25,12 @@ from pydeseq2.torch_grid_search import torch_grid_fit_shrink_beta
 class TorchInference(inference.Inference):
     """GPU-backed DESeq2 inference methods using PyTorch.
 
-    Implements DESeq2 inference routines with fully vectorized PyTorch
-    operations for GPU acceleration. All genes are processed
-    simultaneously rather than via per-gene parallelization.
+    Implements DESeq2 inference routines using batched PyTorch tensor
+    operations for GPU acceleration. Most methods process all genes
+    simultaneously. For multi-factor designs (n_coeffs > 2), genes
+    that fail IRLS convergence fall back to the CPU ``irls_solver``.
+
+    Requires CUDA or CPU; MPS is not supported (float64 required).
 
     Parameters
     ----------
@@ -225,10 +232,12 @@ class TorchInference(inference.Inference):
             if torch.all(converged) or i == maxiter - 1:
                 break
 
-        # Check for NaNs and fall back to grid search if needed
-        irls_converged = ~torch.isnan(beta).any(dim=0)
+        # Preserve per-gene convergence from the IRLS loop, then
+        # handle NaN genes separately via fallback.
+        nan_genes = torch.isnan(beta).any(dim=0)
+        converged[nan_genes] = False
 
-        if not torch.all(irls_converged):
+        if nan_genes.any():
             if n_coeffs == 2:
                 beta_fallback = torch_grid_fit_beta(
                     counts=counts,
@@ -243,13 +252,15 @@ class TorchInference(inference.Inference):
                     device=self.device,
                     dtype=torch.float64,
                 )
+                # Grid search replaces all genes; mark all
+                # as non-converged (grid search result).
+                converged[:] = False
             else:
-                # For n_coeffs > 2, fall back to CPU grid search
-                # per non-converged gene
+                # For n_coeffs > 2, fall back to the CPU
+                # irls_solver per non-converged gene (serial).
                 from pydeseq2.utils import irls_solver
 
-                nan_mask = torch.isnan(beta).any(dim=0)
-                nan_indices = torch.where(nan_mask)[0]
+                nan_indices = torch.where(nan_genes)[0]
                 for idx in nan_indices:
                     i = idx.item()
                     try:
@@ -272,9 +283,6 @@ class TorchInference(inference.Inference):
                         )
                     except (RuntimeError, ValueError):
                         beta[:, i] = 0.0
-            converged = torch.zeros(n_genes, dtype=torch.bool, device=self.device)
-        else:
-            converged = irls_converged
 
         # Compute hat diagonals using final beta
         W = mu / (1.0 + mu * disp_t[None, :])
