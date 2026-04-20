@@ -63,42 +63,24 @@ def assert_res_almost_equal(py_res, r_res, tol=0.02):
     assert (py_res.padj.isna() == r_res.padj.isna()).all()
 
     assert (
-        abs(r_res.log2FoldChange - py_res.log2FoldChange)
-        / abs(r_res.log2FoldChange)
+        abs(r_res.log2FoldChange - py_res.log2FoldChange) / abs(r_res.log2FoldChange)
     ).max() < tol
 
     # For p-values, skip genes where both values are < 1e-14
     # (underflow region for ndtr vs sf)
     pval_mask = ~(
-        r_res.pvalue.isna()
-        | (
-            (r_res.pvalue < 1e-14)
-            & (py_res.pvalue < 1e-14)
-        )
+        r_res.pvalue.isna() | ((r_res.pvalue < 1e-14) & (py_res.pvalue < 1e-14))
     )
     if pval_mask.any():
         assert (
-            abs(
-                r_res.pvalue[pval_mask]
-                - py_res.pvalue[pval_mask]
-            )
+            abs(r_res.pvalue[pval_mask] - py_res.pvalue[pval_mask])
             / r_res.pvalue[pval_mask]
         ).max() < tol
 
-    padj_mask = ~(
-        r_res.padj.isna()
-        | (
-            (r_res.padj < 1e-14)
-            & (py_res.padj < 1e-14)
-        )
-    )
+    padj_mask = ~(r_res.padj.isna() | ((r_res.padj < 1e-14) & (py_res.padj < 1e-14)))
     if padj_mask.any():
         assert (
-            abs(
-                r_res.padj[padj_mask]
-                - py_res.padj[padj_mask]
-            )
-            / r_res.padj[padj_mask]
+            abs(r_res.padj[padj_mask] - py_res.padj[padj_mask]) / r_res.padj[padj_mask]
         ).max() < tol
 
 
@@ -108,9 +90,7 @@ def assert_res_almost_equal(py_res, r_res, tol=0.02):
 def test_gpu_deseq_parametric_fit(counts_df, metadata, tol=0.02):
     """GPU pipeline with parametric fit matches R reference."""
     r_res = pd.read_csv(
-        os.path.join(
-            _test_path(), "data/single_factor/r_test_res.csv"
-        ),
+        os.path.join(_test_path(), "data/single_factor/r_test_res.csv"),
         index_col=0,
     )
 
@@ -154,15 +134,12 @@ def test_gpu_deseq_mean_fit(counts_df, metadata, tol=0.02):
     assert_res_almost_equal(ds.results_df, r_res, tol)
 
 
-def test_gpu_no_independent_filtering(
-    counts_df, metadata, tol=0.02
-):
+def test_gpu_no_independent_filtering(counts_df, metadata, tol=0.02):
     """GPU pipeline without independent filtering matches R."""
     r_res = pd.read_csv(
         os.path.join(
             _test_path(),
-            "data/single_factor/"
-            "r_test_res_no_independent_filtering.csv",
+            "data/single_factor/r_test_res_no_independent_filtering.csv",
         ),
         index_col=0,
     )
@@ -190,9 +167,7 @@ def test_gpu_no_independent_filtering(
     "alt_hypothesis",
     ["lessAbs", "greaterAbs", "less", "greater"],
 )
-def test_gpu_alt_hypothesis(
-    alt_hypothesis, counts_df, metadata, tol=0.02
-):
+def test_gpu_alt_hypothesis(alt_hypothesis, counts_df, metadata, tol=0.02):
     """GPU pipeline with alternative hypotheses matches R."""
     r_res = pd.read_csv(
         os.path.join(
@@ -226,23 +201,17 @@ def test_gpu_alt_hypothesis(
 
     # LFC matches
     assert (
-        abs(r_res.log2FoldChange - res.log2FoldChange)
-        / abs(r_res.log2FoldChange)
+        abs(r_res.log2FoldChange - res.log2FoldChange) / abs(r_res.log2FoldChange)
     ).max() < tol
 
     # Stat matches (abs for lessAbs, as in upstream test)
     if alt_hypothesis == "lessAbs":
         res.stat = res.stat.abs()
-    assert (
-        abs(r_res.stat - res.stat) / abs(r_res.stat)
-    ).max() < tol
+    assert (abs(r_res.stat - res.stat) / abs(r_res.stat)).max() < tol
 
     # P-values match only where stat != 0
     assert (
-        abs(
-            r_res.pvalue[r_res.stat != 0]
-            - res.pvalue[res.stat != 0]
-        )
+        abs(r_res.pvalue[r_res.stat != 0] - res.pvalue[res.stat != 0])
         / r_res.pvalue[r_res.stat != 0]
     ).max() < tol
 
@@ -279,9 +248,7 @@ def test_gpu_no_refit_cooks(counts_df, metadata, tol=0.02):
 def test_gpu_lfc_shrinkage(counts_df, metadata, tol=0.02):
     """GPU LFC shrinkage matches R reference."""
     r_res = pd.read_csv(
-        os.path.join(
-            _test_path(), "data/single_factor/r_test_res.csv"
-        ),
+        os.path.join(_test_path(), "data/single_factor/r_test_res.csv"),
         index_col=0,
     )
     r_shrunk_res = pd.read_csv(
@@ -317,9 +284,7 @@ def test_gpu_lfc_shrinkage(counts_df, metadata, tol=0.02):
     # Override with R values for controlled shrinkage test
     dds.obs["size_factors"] = r_size_factors
     dds.var["dispersions"] = r_dispersions.values
-    dds.varm["LFC"].iloc[:, 1] = (
-        r_res.log2FoldChange.values * np.log(2)
-    )
+    dds.varm["LFC"].iloc[:, 1] = r_res.log2FoldChange.values * np.log(2)
 
     res = DeseqStats(dds, contrast=["condition", "B", "A"])
     res.summary()
@@ -328,10 +293,7 @@ def test_gpu_lfc_shrinkage(counts_df, metadata, tol=0.02):
     shrunk_res = res.results_df
 
     assert (
-        abs(
-            r_shrunk_res.log2FoldChange
-            - shrunk_res.log2FoldChange
-        )
+        abs(r_shrunk_res.log2FoldChange - shrunk_res.log2FoldChange)
         / abs(r_shrunk_res.log2FoldChange)
     ).max() < tol
 
@@ -340,9 +302,7 @@ def test_gpu_lfc_shrinkage(counts_df, metadata, tol=0.02):
 
 
 @pytest.mark.parametrize("with_outliers", [True, False])
-def test_gpu_multifactor_deseq(
-    counts_df, metadata, with_outliers, tol=0.04
-):
+def test_gpu_multifactor_deseq(counts_df, metadata, with_outliers, tol=0.04):
     """GPU multi-factor pipeline matches R reference."""
     if with_outliers:
         r_res = pd.read_csv(
@@ -387,16 +347,12 @@ def test_gpu_multifactor_deseq(
 def test_gpu_continuous_deseq(with_outliers, tol=0.04):
     """GPU continuous-factor pipeline matches R reference."""
     counts_df = pd.read_csv(
-        os.path.join(
-            _test_path(), "data/continuous/test_counts.csv"
-        ),
+        os.path.join(_test_path(), "data/continuous/test_counts.csv"),
         index_col=0,
     ).T
 
     metadata = pd.read_csv(
-        os.path.join(
-            _test_path(), "data/continuous/test_metadata.csv"
-        ),
+        os.path.join(_test_path(), "data/continuous/test_metadata.csv"),
         index_col=0,
     )
 
@@ -428,9 +384,7 @@ def test_gpu_continuous_deseq(with_outliers, tol=0.04):
     )
     dds.deseq2()
 
-    contrast_vector = np.zeros(
-        dds.obsm["design_matrix"].shape[1]
-    )
+    contrast_vector = np.zeros(dds.obsm["design_matrix"].shape[1])
     contrast_vector[-1] = 1
 
     ds = DeseqStats(dds, contrast=contrast_vector)
@@ -445,23 +399,17 @@ def test_gpu_continuous_deseq(with_outliers, tol=0.04):
 def test_gpu_wide_deseq(tol=0.02):
     """GPU wide dataset (more genes than samples) matches R."""
     r_res = pd.read_csv(
-        os.path.join(
-            _test_path(), "data/wide/r_test_res.csv"
-        ),
+        os.path.join(_test_path(), "data/wide/r_test_res.csv"),
         index_col=0,
     )
 
     counts_df = pd.read_csv(
-        os.path.join(
-            _test_path(), "data/wide/test_counts.csv"
-        ),
+        os.path.join(_test_path(), "data/wide/test_counts.csv"),
         index_col=0,
     ).T
 
     metadata = pd.read_csv(
-        os.path.join(
-            _test_path(), "data/wide/test_metadata.csv"
-        ),
+        os.path.join(_test_path(), "data/wide/test_metadata.csv"),
         index_col=0,
     )
 

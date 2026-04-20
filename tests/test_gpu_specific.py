@@ -14,12 +14,8 @@ from pydeseq2.utils import load_example_data
 
 torch = pytest.importorskip("torch")
 pytestmark = [
-    pytest.mark.skipif(
-        not torch.cuda.is_available(), reason="CUDA not available"
-    ),
-    pytest.mark.filterwarnings(
-        "ignore::UserWarning"
-    ),
+    pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available"),
+    pytest.mark.filterwarnings("ignore::UserWarning"),
 ]
 
 
@@ -41,14 +37,10 @@ def metadata():
     )
 
 
-def _generate_synthetic(
-    n_samples=20, n_genes=100, seed=42
-):
+def _generate_synthetic(n_samples=20, n_genes=100, seed=42):
     """Generate synthetic count data for testing."""
     rng = np.random.default_rng(seed)
-    counts = rng.integers(0, 500, size=(n_samples, n_genes)).astype(
-        float
-    )
+    counts = rng.integers(0, 500, size=(n_samples, n_genes)).astype(float)
     counts[: n_samples // 2, : n_genes // 2] += 50
 
     counts_df = pd.DataFrame(
@@ -57,12 +49,8 @@ def _generate_synthetic(
         columns=[f"gene_{i}" for i in range(n_genes)],
     )
 
-    conditions = ["A"] * (n_samples // 2) + ["B"] * (
-        n_samples - n_samples // 2
-    )
-    metadata = pd.DataFrame(
-        {"condition": conditions}, index=counts_df.index
-    )
+    conditions = ["A"] * (n_samples // 2) + ["B"] * (n_samples - n_samples // 2)
+    metadata = pd.DataFrame({"condition": conditions}, index=counts_df.index)
     return counts_df, metadata
 
 
@@ -113,9 +101,7 @@ class TestDevicePlacement:
 class TestPrecision:
     def test_cpu_gpu_concordance_tight_tol(self):
         """GPU and CPU produce nearly identical results."""
-        counts_df, metadata = _generate_synthetic(
-            n_samples=20, n_genes=50
-        )
+        counts_df, metadata = _generate_synthetic(n_samples=20, n_genes=50)
 
         # CPU run
         dds_cpu = DeseqDataSet(
@@ -125,9 +111,7 @@ class TestPrecision:
             quiet=True,
         )
         dds_cpu.deseq2()
-        ds_cpu = DeseqStats(
-            dds_cpu, contrast=["condition", "B", "A"]
-        )
+        ds_cpu = DeseqStats(dds_cpu, contrast=["condition", "B", "A"])
         ds_cpu.summary()
 
         # GPU run
@@ -139,9 +123,7 @@ class TestPrecision:
             quiet=True,
         )
         dds_gpu.deseq2()
-        ds_gpu = DeseqStats(
-            dds_gpu, contrast=["condition", "B", "A"]
-        )
+        ds_gpu = DeseqStats(dds_gpu, contrast=["condition", "B", "A"])
         ds_gpu.summary()
 
         # Compare LFCs
@@ -149,18 +131,13 @@ class TestPrecision:
         gpu_lfc = ds_gpu.results_df["log2FoldChange"].values
 
         # Filter out NaN and zero values
-        valid = ~(
-            np.isnan(cpu_lfc)
-            | np.isnan(gpu_lfc)
-            | (cpu_lfc == 0)
-        )
+        valid = ~(np.isnan(cpu_lfc) | np.isnan(gpu_lfc) | (cpu_lfc == 0))
         if valid.sum() > 0:
             rel_err = np.abs(cpu_lfc[valid] - gpu_lfc[valid]) / (
                 np.abs(cpu_lfc[valid]) + 1e-10
             )
             assert rel_err.max() < 0.01, (
-                f"Max LFC relative error {rel_err.max():.6f} "
-                f"exceeds 1% tolerance"
+                f"Max LFC relative error {rel_err.max():.6f} exceeds 1% tolerance"
             )
 
     def test_float64_used(self, counts_df, metadata):
@@ -193,9 +170,7 @@ class TestMemory:
         torch.cuda.reset_peak_memory_stats()
         baseline = torch.cuda.memory_allocated()
 
-        counts_df, metadata = _generate_synthetic(
-            n_samples=20, n_genes=100
-        )
+        counts_df, metadata = _generate_synthetic(n_samples=20, n_genes=100)
         dds = DeseqDataSet(
             counts=counts_df,
             metadata=metadata,
@@ -215,8 +190,7 @@ class TestMemory:
         # Memory should return close to baseline
         after = torch.cuda.memory_allocated()
         assert after <= baseline + 1024 * 1024, (
-            f"GPU memory not released: baseline={baseline}, "
-            f"after={after}"
+            f"GPU memory not released: baseline={baseline}, after={after}"
         )
 
 
@@ -244,9 +218,7 @@ class TestEdgeCases:
         ds = DeseqStats(dds, contrast=["condition", "B", "A"])
         ds.summary()
 
-        assert np.isnan(
-            ds.results_df.loc["zero_gene", "pvalue"]
-        )
+        assert np.isnan(ds.results_df.loc["zero_gene", "pvalue"])
 
     def test_gpu_large_counts(self):
         """GPU handles genes with very large count values."""
@@ -280,15 +252,11 @@ class TestEdgeCases:
         ds.summary()
 
         # Should produce finite results
-        assert not np.isnan(
-            ds.results_df["log2FoldChange"].values
-        ).all()
+        assert not np.isnan(ds.results_df["log2FoldChange"].values).all()
 
     def test_gpu_many_genes(self):
         """GPU handles datasets with many genes efficiently."""
-        counts_df, metadata = _generate_synthetic(
-            n_samples=20, n_genes=1000
-        )
+        counts_df, metadata = _generate_synthetic(n_samples=20, n_genes=1000)
 
         dds = DeseqDataSet(
             counts=counts_df,
@@ -306,12 +274,8 @@ class TestEdgeCases:
 
     def test_gpu_multifactor_design(self):
         """GPU handles multi-factor designs (n_coeffs > 2)."""
-        counts_df, metadata = _generate_synthetic(
-            n_samples=30, n_genes=50
-        )
-        metadata["group"] = (
-            ["X", "Y", "Z"] * 10
-        )[:30]
+        counts_df, metadata = _generate_synthetic(n_samples=30, n_genes=50)
+        metadata["group"] = (["X", "Y", "Z"] * 10)[:30]
 
         dds = DeseqDataSet(
             counts=counts_df,
