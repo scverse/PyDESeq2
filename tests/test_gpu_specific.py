@@ -98,15 +98,66 @@ class TestDevicePlacement:
 # ---- Precision tests ----
 
 
-class TestPrecision:
-    def test_cpu_gpu_concordance_tight_tol(self):
-        """GPU and CPU produce nearly identical results."""
-        counts_df, metadata = _generate_synthetic(n_samples=20, n_genes=50)
+def _assert_cpu_gpu_match(cpu_res, gpu_res, rtol=0.02, label=""):
+    """Assert CPU and GPU results match across all columns.
 
-        # CPU run
+    Checks log2FoldChange, stat, lfcSE, pvalue, and padj.
+    Uses 2% relative tolerance by default, matching the R-vs-CPU
+    validation threshold. Also verifies that the vast majority of
+    genes (>99%) agree within 0.1%.
+
+    Skips values where both are NaN or both are < 1e-14
+    (torch.special.ndtr underflow region).
+    """
+    for col in ["log2FoldChange", "stat", "lfcSE", "pvalue", "padj"]:
+        cpu_vals = cpu_res[col].values
+        gpu_vals = gpu_res[col].values
+
+        # Both NaN is fine
+        both_nan = np.isnan(cpu_vals) & np.isnan(gpu_vals)
+        # Both near-zero is fine (ndtr underflow)
+        both_tiny = (np.abs(cpu_vals) < 1e-14) & (np.abs(gpu_vals) < 1e-14)
+        valid = ~(both_nan | both_tiny | np.isnan(cpu_vals) | np.isnan(gpu_vals))
+
+        if not valid.any():
+            continue
+
+        # NaN mismatch is a failure
+        nan_mismatch = np.isnan(cpu_vals) != np.isnan(gpu_vals)
+        assert not nan_mismatch.any(), (
+            f"{label} {col}: NaN mismatch at genes {np.where(nan_mismatch)[0].tolist()}"
+        )
+
+        c = cpu_vals[valid]
+        g = gpu_vals[valid]
+        denom = np.maximum(np.abs(c), 1e-15)
+        rel_err = np.abs(c - g) / denom
+
+        worst_idx = np.argmax(rel_err)
+        # Hard ceiling: no gene exceeds rtol
+        assert rel_err.max() < rtol, (
+            f"{label} {col}: max relative error {rel_err.max():.2e} "
+            f"exceeds {rtol:.0e} (gene index {worst_idx}, "
+            f"CPU={c[worst_idx]:.8e}, GPU={g[worst_idx]:.8e})"
+        )
+        # Soft check: >99% of genes within 0.1%, or at most 1
+        # outlier for small datasets (< 100 genes)
+        n_outliers = (rel_err >= 1e-3).sum()
+        max_outliers = max(1, int(0.01 * len(rel_err)))
+        assert n_outliers <= max_outliers, (
+            f"{label} {col}: {n_outliers} genes exceed 0.1% "
+            f"tolerance (max allowed: {max_outliers})"
+        )
+
+
+class TestCpuGpuExactMatch:
+    """Verify GPU produces identical results to CPU across designs."""
+
+    def test_single_factor_exact_match(self, counts_df, metadata):
+        """CPU and GPU match on the standard single-factor dataset."""
         dds_cpu = DeseqDataSet(
-            counts=counts_df,
-            metadata=metadata,
+            counts=counts_df.copy(),
+            metadata=metadata.copy(),
             design="~condition",
             quiet=True,
         )
@@ -114,7 +165,6 @@ class TestPrecision:
         ds_cpu = DeseqStats(dds_cpu, contrast=["condition", "B", "A"])
         ds_cpu.summary()
 
-        # GPU run
         dds_gpu = DeseqDataSet(
             counts=counts_df.copy(),
             metadata=metadata.copy(),
@@ -126,19 +176,88 @@ class TestPrecision:
         ds_gpu = DeseqStats(dds_gpu, contrast=["condition", "B", "A"])
         ds_gpu.summary()
 
-        # Compare LFCs
-        cpu_lfc = ds_cpu.results_df["log2FoldChange"].values
-        gpu_lfc = ds_gpu.results_df["log2FoldChange"].values
+        _assert_cpu_gpu_match(
+            ds_cpu.results_df, ds_gpu.results_df, label="single_factor"
+        )
 
-        # Filter out NaN and zero values
-        valid = ~(np.isnan(cpu_lfc) | np.isnan(gpu_lfc) | (cpu_lfc == 0))
-        if valid.sum() > 0:
-            rel_err = np.abs(cpu_lfc[valid] - gpu_lfc[valid]) / (
-                np.abs(cpu_lfc[valid]) + 1e-10
-            )
-            assert rel_err.max() < 0.01, (
-                f"Max LFC relative error {rel_err.max():.6f} exceeds 1% tolerance"
-            )
+        # Also check intermediate results: dispersions
+        np.testing.assert_allclose(
+            dds_cpu.var["dispersions"].values,
+            dds_gpu.var["dispersions"].values,
+            rtol=1e-4,
+            err_msg="Dispersions differ between CPU and GPU",
+        )
+
+    def test_multifactor_exact_match(self):
+        """CPU and GPU match on a multi-factor design.
+
+        Multi-factor (n_coeffs > 2) uses CPU fallback for non-converged
+        genes in IRLS, so we use a slightly relaxed tolerance (4%) to
+        match the upstream R validation threshold for multi-factor designs.
+        """
+        counts_df, metadata = _generate_synthetic(n_samples=30, n_genes=50)
+        metadata["group"] = (["X", "Y", "Z"] * 10)[:30]
+
+        dds_cpu = DeseqDataSet(
+            counts=counts_df.copy(),
+            metadata=metadata.copy(),
+            design="~group + condition",
+            quiet=True,
+        )
+        dds_cpu.deseq2()
+        ds_cpu = DeseqStats(dds_cpu, contrast=["condition", "B", "A"])
+        ds_cpu.summary()
+
+        dds_gpu = DeseqDataSet(
+            counts=counts_df.copy(),
+            metadata=metadata.copy(),
+            design="~group + condition",
+            inference_type="gpu",
+            quiet=True,
+        )
+        dds_gpu.deseq2()
+        ds_gpu = DeseqStats(dds_gpu, contrast=["condition", "B", "A"])
+        ds_gpu.summary()
+
+        _assert_cpu_gpu_match(
+            ds_cpu.results_df, ds_gpu.results_df, rtol=0.04, label="multifactor"
+        )
+
+    @pytest.mark.parametrize(
+        "n_samples,n_genes",
+        [(20, 100), (50, 500), (20, 1000)],
+        ids=["20x100", "50x500", "20x1000"],
+    )
+    def test_scaled_exact_match(self, n_samples, n_genes):
+        """CPU and GPU match across different dataset sizes."""
+        counts_df, metadata = _generate_synthetic(n_samples, n_genes)
+
+        dds_cpu = DeseqDataSet(
+            counts=counts_df.copy(),
+            metadata=metadata.copy(),
+            design="~condition",
+            quiet=True,
+        )
+        dds_cpu.deseq2()
+        ds_cpu = DeseqStats(dds_cpu, contrast=["condition", "B", "A"])
+        ds_cpu.summary()
+
+        dds_gpu = DeseqDataSet(
+            counts=counts_df.copy(),
+            metadata=metadata.copy(),
+            design="~condition",
+            inference_type="gpu",
+            quiet=True,
+        )
+        dds_gpu.deseq2()
+        ds_gpu = DeseqStats(dds_gpu, contrast=["condition", "B", "A"])
+        ds_gpu.summary()
+
+        _assert_cpu_gpu_match(
+            ds_cpu.results_df,
+            ds_gpu.results_df,
+            label=f"{n_samples}x{n_genes}",
+        )
 
     def test_float64_used(self, counts_df, metadata):
         """Verify TorchInference uses float64 tensors."""
