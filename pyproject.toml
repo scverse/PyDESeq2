@@ -111,6 +111,11 @@ convention = "numpy"
 # Ignore unused imports in __init__.py files
 "*/__init__.py" = ["F401"]
 
+[tool.mypy]
+[[tool.mypy.overrides]]
+module = "torch.*"
+ignore_missing_imports = true
+
 # pyproject.toml
 [tool.pytest.ini_options]
 filterwarnings = [
