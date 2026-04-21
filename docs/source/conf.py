@@ -250,6 +250,7 @@ nitpick_ignore = [
     ("py:class", "torch.optim.lr_scheduler._LRScheduler"),
     ("py:class", "torch.device"),
     ("py:class", "torch.utils.data.dataset.Dataset"),
+    ("py:class", "anndata._core.anndata.AnnData"),
 ]
 
 html_css_files = [

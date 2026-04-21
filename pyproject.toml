@@ -34,6 +34,9 @@ dependencies = [
   "formulaic-contrasts>=0.2.0",
   "matplotlib>=3.9.0",
 ]
+optional-dependencies.gpu = [
+  "torch>=2.0.0",
+]
 optional-dependencies.dev = [
   "pytest>=8.4.0",
   "pre-commit>=2.16.0",
@@ -107,6 +110,11 @@ convention = "numpy"
 "examples/*" = ["D205", "B018", "D400"]
 # Ignore unused imports in __init__.py files
 "*/__init__.py" = ["F401"]
+
+[tool.mypy]
+[[tool.mypy.overrides]]
+module = "torch.*"
+ignore_missing_imports = true
 
 # pyproject.toml
 [tool.pytest.ini_options]

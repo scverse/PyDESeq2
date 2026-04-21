@@ -143,3 +143,5 @@ docs/source/sg_execution_times.rst
 # Requirement files
 uv.lock
 requirements.txt
+benchmark_results.csv
+PR.md
