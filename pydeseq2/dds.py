@@ -1214,27 +1214,19 @@ class DeseqDataSet(ad.AnnData):
         if disp_param_name not in self.var:
             self.fit_genewise_dispersions(vst)
 
-        # Exclude all-zero counts
-        targets = pd.Series(
-            self.var.loc[self.non_zero_genes, disp_param_name].copy(),
-            index=self.non_zero_genes,
-        )
-        covariates = pd.Series(
-            1 / self.var.loc[self.non_zero_genes, "_normed_means"],
-            index=self.non_zero_genes,
-        )
-
-        for gene in self.non_zero_genes:
-            if (
-                np.isinf(covariates.loc[gene]).any()
-                or np.isnan(covariates.loc[gene]).any()
-            ):
-                targets.drop(labels=[gene], inplace=True)
-                covariates.drop(labels=[gene], inplace=True)
+        # Exclude all-zero counts and genes with degenerate covariates (±inf, NaN)
+        # in one vectorized pass instead of a per-gene python loop.
+        nz = self.non_zero_genes
+        targets_arr = self.var.loc[nz, disp_param_name].to_numpy(copy=True)
+        covariates_arr = 1.0 / self.var.loc[nz, "_normed_means"].to_numpy()
+        finite = np.isfinite(covariates_arr)
+        targets = pd.Series(targets_arr[finite], index=nz[finite])
+        covariates = pd.Series(covariates_arr[finite], index=nz[finite])
 
         # Initialize coefficients
         old_coeffs: np.ndarray | pd.Series = pd.Series([0.1, 0.1])
         coeffs: np.ndarray | pd.Series = pd.Series([1.0, 1.0])
+        disp_values = self.var[disp_param_name]
         while (coeffs > 1e-10).all() and (
             np.log(np.abs(coeffs / old_coeffs)) ** 2
         ).sum() >= 1e-6:
@@ -1253,17 +1245,13 @@ class DeseqDataSet(ad.AnnData):
                 self._fit_mean_dispersion_trend(vst)
                 return
 
-            # Filter out genes that are too far away from the curve before refitting
-            pred_ratios = self.var.loc[covariates.index, disp_param_name] / predictions
-
-            targets.drop(
-                targets[(pred_ratios < 1e-4) | (pred_ratios >= 15)].index,
-                inplace=True,
-            )
-            covariates.drop(
-                covariates[(pred_ratios < 1e-4) | (pred_ratios >= 15)].index,
-                inplace=True,
-            )
+            # Vectorized keep-mask: drop genes too far from the fitted curve.
+            disp_slice = disp_values.loc[covariates.index].to_numpy()
+            pred_ratios = disp_slice / predictions
+            keep = (pred_ratios >= 1e-4) & (pred_ratios < 15)
+            if not keep.all():
+                targets = targets.iloc[keep]
+                covariates = covariates.iloc[keep]
 
         if vst:
             self.uns["vst_trend_coeffs"] = pd.Series(coeffs, index=["a0", "a1"])
