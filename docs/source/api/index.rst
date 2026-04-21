@@ -13,6 +13,7 @@ PyDESeq2
     ~ds.DeseqStats
     ~inference.Inference
     ~default_inference.DefaultInference
+    ~jax_inference.JaxInference
     ~utils
     ~grid_search
     ~preprocessing

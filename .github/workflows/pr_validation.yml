@@ -38,7 +38,7 @@ jobs:
           version: "latest"
       - name: Install dependencies
         run: |
-          uv sync --extra doc --extra dev
+          uv sync --extra doc --extra dev --extra jax
       - name: Lint with ruff
         run: |
           uv run ruff check --fix --exit-non-zero-on-fix pydeseq2
