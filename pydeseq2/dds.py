@@ -575,11 +575,25 @@ class DeseqDataSet(ad.AnnData):
         ndarray
             A contrast vector that aligns to the columns of the design matrix.
         """
-        return self.formulaic_contrasts.cond(**kwargs)
+        try:
+            return self.formulaic_contrasts.cond(**kwargs)
+        except AttributeError:
+            raise AttributeError(
+                "The cond() method requires a formula-based design. "
+                "When using a precomputed design matrix (DataFrame), "
+                "pass the contrast vector directly instead."
+            ) from None
 
     def contrast(self, *args, **kwargs):
         """Get a contrast for a simple pairwise comparison."""
-        return self.formulaic_contrasts.contrast(*args, **kwargs)
+        try:
+            return self.formulaic_contrasts.contrast(*args, **kwargs)
+        except AttributeError:
+            raise AttributeError(
+                "The contrast() method requires a formula-based design. "
+                "When using a precomputed design matrix (DataFrame), "
+                "pass the contrast vector directly instead."
+            ) from None
 
     def fit_size_factors(
         self,
