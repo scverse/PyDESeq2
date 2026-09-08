@@ -261,7 +261,9 @@ def wald_test(
         return stat, pval
 
     def greater_abs(lfc_null):
-        stat = np.sign(contrast_lfc) * np.fmax((np.abs(contrast_lfc) - lfc_null) / wald_se, 0)
+        stat = np.sign(contrast_lfc) * np.fmax(
+            (np.abs(contrast_lfc) - lfc_null) / wald_se, 0
+        )
         pval = 2 * norm.sf(np.abs(stat))  # Only case where the test is two-tailed
         return stat, pval
 
