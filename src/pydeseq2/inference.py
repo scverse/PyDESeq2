@@ -4,6 +4,10 @@ from typing import Literal
 
 import numpy as np
 import pandas as pd
+from scipy.sparse import sparray
+from scipy.sparse import spmatrix
+
+type CountMatrix = np.ndarray | spmatrix | sparray
 
 
 class Inference(ABC):
@@ -12,7 +16,7 @@ class Inference(ABC):
     @abstractmethod
     def lin_reg_mu(
         self,
-        counts: np.ndarray,
+        counts: CountMatrix,
         size_factors: np.ndarray,
         design_matrix: np.ndarray,
         min_mu: float,
@@ -24,9 +28,14 @@ class Inference(ABC):
         Parameters
         ----------
         counts
-            Raw counts.
+            Raw count matrix.
+
         size_factors
-            Sample-wise scaling factors (obtained from median-of-ratios).
+            Sample-wise scaling factors with shape ``(n_samples,)``, or
+            sample-by-gene normalization factors with shape
+            ``(n_samples, n_genes)`` (obtained from median-of-ratios and optional
+            gene-specific offsets).
+
         design_matrix
             Design matrix.
         min_mu
@@ -40,7 +49,7 @@ class Inference(ABC):
     @abstractmethod
     def irls(
         self,
-        counts: np.ndarray,
+        counts: CountMatrix,
         size_factors: np.ndarray,
         design_matrix: np.ndarray,
         disp: np.ndarray,
@@ -58,9 +67,14 @@ class Inference(ABC):
         Parameters
         ----------
         counts
-            Raw counts.
+            Raw count matrix.
+
         size_factors
-            Sample-wise scaling factors (obtained from median-of-ratios).
+            Sample-wise scaling factors with shape ``(n_samples,)``, or
+            sample-by-gene normalization factors with shape
+            ``(n_samples, n_genes)`` (obtained from median-of-ratios and optional
+            gene-specific offsets).
+
         design_matrix
             Design matrix.
         disp
@@ -96,7 +110,7 @@ class Inference(ABC):
     @abstractmethod
     def alpha_mle(
         self,
-        counts: np.ndarray,
+        counts: CountMatrix,
         design_matrix: np.ndarray,
         mu: np.ndarray,
         alpha_hat: np.ndarray,
@@ -112,7 +126,8 @@ class Inference(ABC):
         Parameters
         ----------
         counts
-            Raw counts.
+            Raw count matrix.
+
         design_matrix
             Design matrix.
         mu
@@ -222,10 +237,12 @@ class Inference(ABC):
         Parameters
         ----------
         normed_counts
-            Array of deseq2-normalized read counts.
-            Rows: samples, columns: genes.
+            Array of deseq2-normalized read counts. Rows: samples, columns: genes.
+
         size_factors
-            DESeq2 normalization factors.
+            Sample-wise scaling factors with shape ``(n_samples,)``, or
+            sample-by-gene normalization factors with shape
+            ``(n_samples, n_genes)``.
 
         Returns
         -------
@@ -261,7 +278,7 @@ class Inference(ABC):
     def lfc_shrink_nbinom_glm(
         self,
         design_matrix: np.ndarray,
-        counts: np.ndarray,
+        counts: CountMatrix,
         size: np.ndarray,
         offset: np.ndarray,
         prior_no_shrink_scale: float,
@@ -277,12 +294,18 @@ class Inference(ABC):
         ----------
         design_matrix
             Design matrix.
+
         counts
-            Raw counts.
+            Raw count matrix.
+
         size
             Size parameter of NB family (inverse of dispersion).
+
         offset
-            Natural logarithm of size factor.
+            Natural logarithm of sample-wise size factors with shape
+            ``(n_samples,)``, or sample-by-gene normalization factors with shape
+            ``(n_samples, n_genes)``.
+
         prior_no_shrink_scale
             Prior variance for the intercept.
         prior_scale

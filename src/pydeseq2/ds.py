@@ -282,11 +282,10 @@ class DeseqStats:
                     file=sys.stderr,
                 )
 
-        mu = (
-            np.exp(self.design_matrix @ self.LFC.T)
-            .multiply(self.dds.obs["size_factors"], 0)
-            .values
-        )
+        normalization_factors = self.dds._get_normalization_factors()
+        if normalization_factors.ndim == 1:
+            normalization_factors = normalization_factors[:, None]
+        mu = np.exp(self.design_matrix @ self.LFC.T).to_numpy() * normalization_factors
 
         # Set regularization factors.
         if self.prior_LFC_var is not None:
@@ -349,7 +348,7 @@ class DeseqStats:
 
         design_matrix = self.design_matrix.values
         size = 1.0 / self.dds.var["dispersions"].to_numpy()
-        offset = np.log(self.dds.obs["size_factors"]).to_numpy()
+        offset = np.log(self.dds._get_normalization_factors(self.dds.non_zero_idx))
 
         # Set priors
         prior_no_shrink_scale = 15
