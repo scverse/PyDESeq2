@@ -22,6 +22,7 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
 ]
 dynamic = [ "version" ]
 dependencies = [
@@ -87,6 +88,8 @@ envs.docs.scripts.build = "sphinx-build -M html docs docs/_build -W {args}"
 envs.docs.scripts.clean = "git clean -fdX -- {args:docs}"
 envs.docs.scripts.open = "python -m webbrowser -t docs/_build/html/index.html"
 envs.docs.dependency-groups = [ "doc" ]
+envs.hatch-check-types.scripts.check = [ "mypy src/pydeseq2 --ignore-missing-imports" ]
+envs.hatch-check-types.dependency-groups = [ "typecheck", "test" ]
 envs.hatch-test.matrix = [
   # Test the lowest and highest supported Python versions with normal deps
   { deps = [ "stable" ], python = [ "3.12", "3.14" ] },
@@ -99,8 +102,6 @@ envs.hatch-test.overrides.matrix.deps.env-vars = [
   { value = "allow", key = "UV_PRERELEASE", if = [ "pre" ] },
 ]
 envs.hatch-test.dependency-groups = [ "dev", "test" ]
-envs.hatch-check-types.scripts.check = [ "mypy src/pydeseq2 --ignore-missing-imports" ]
-envs.hatch-check-types.dependency-groups = [ "typecheck", "test" ]
 
 [tool.ruff]
 line-length = 89
@@ -151,11 +152,11 @@ ini_options.filterwarnings = [
 ]
 
 [tool.coverage]
+run.source = [ "pydeseq2" ]
 run.omit = [
   "**/test_*.py",
 ]
 run.patch = [ "subprocess" ]
-run.source = [ "pydeseq2" ]
 
 [tool.cruft]
 skip = [
