@@ -223,7 +223,17 @@ def fit_alpha_mle(
     else:
         return (
             np.exp(
-                grid_fit_alpha(counts, design_matrix, mu, alpha_hat, min_disp, max_disp)
+                grid_fit_alpha(
+                    counts,
+                    design_matrix,
+                    mu,
+                    alpha_hat,
+                    min_disp,
+                    max_disp,
+                    prior_disp_var=prior_disp_var,
+                    cr_reg=cr_reg,
+                    prior_reg=prior_reg,
+                )
             ),
             res.success,
         )
