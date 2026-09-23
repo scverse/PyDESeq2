@@ -208,6 +208,7 @@ def grid_fit_shrink_beta(
     grid_length: int = 60,
     min_beta: float = -30,
     max_beta: float = 30,
+    shrink_index: int = 1,
 ) -> np.ndarray:
     """Find best LFC parameter.
 
@@ -235,6 +236,8 @@ def grid_fit_shrink_beta(
         Lower-bound on LFC. (default: ``30``).
     max_beta
         Upper-bound on LFC. (default: ``30``).
+    shrink_index
+        Index of the LFC coordinate to shrink. (default: ``1``).
 
     Returns
     -------
@@ -255,6 +258,7 @@ def grid_fit_shrink_beta(
                 offset,
                 prior_no_shrink_scale,
                 prior_scale,
+                shrink_index=shrink_index,
             )
             / scale_cnst
         )
