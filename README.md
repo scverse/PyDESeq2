@@ -1,4 +1,4 @@
-<img src="docs/source/_static/pydeseq2_logo_green.png" width="600">
+<img src="docs/_static/pydeseq2_logo_green.png" width="600">
 
 #
 [![pypi version](https://img.shields.io/pypi/v/pydeseq2)](https://pypi.org/project/pydeseq2)
