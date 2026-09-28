@@ -1,12 +1,16 @@
 """Helpers that do not belong to any single step of the pipeline."""
 
 import multiprocessing
+from typing import Any
+from typing import cast
 
 import numpy as np
 import pandas as pd
+from scipy.sparse import sparray
+from scipy.sparse import spmatrix
 
 
-def test_valid_counts(counts: pd.DataFrame | np.ndarray) -> None:
+def test_valid_counts(counts: pd.DataFrame | np.ndarray | spmatrix | sparray) -> None:
     """Test that the count matrix contains valid inputs.
 
     More precisely, test that inputs are non-negative integers.
@@ -22,6 +26,17 @@ def test_valid_counts(counts: pd.DataFrame | np.ndarray) -> None:
             raise ValueError("NaNs are not allowed in the count matrix.")
         if not np.issubdtype(counts.to_numpy().dtype, np.number):
             raise ValueError("The count matrix should only contain numbers.")
+    elif isinstance(counts, (spmatrix, sparray)):
+        sparse_counts = cast(Any, counts)
+        if sparse_counts.format not in {"coo", "csc", "csr"}:
+            values = np.asarray(sparse_counts.tocoo(copy=False).data)
+        else:
+            values = np.asarray(sparse_counts.data)
+        if not np.issubdtype(values.dtype, np.number):
+            raise ValueError("The count matrix should only contain numbers.")
+        if np.isnan(values).any():
+            raise ValueError("NaNs are not allowed in the count matrix.")
+        counts = values
     else:
         if np.isnan(counts).any().any():
             raise ValueError("NaNs are not allowed in the count matrix.")

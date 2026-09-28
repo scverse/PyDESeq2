@@ -290,9 +290,14 @@ def fit_moments_dispersions(
     Estimated dispersion parameter for each gene.
     """
     # Exclude genes with all zeroes
-    normed_counts = normed_counts[:, ~(normed_counts == 0).all(axis=0)]
-    # mean inverse size factor
-    s_mean_inv = (1 / size_factors).mean(axis=0)
+    nonzero_genes = ~(normed_counts == 0).all(axis=0)
+    normed_counts = normed_counts[:, nonzero_genes]
+    # Mean inverse size factor. For gene-specific normalization factors, DESeq2
+    # first averages factors across genes within each sample, then averages the
+    # inverse sample means into one scalar shared by all genes.
+    if size_factors.ndim != 1:
+        size_factors = size_factors[:, nonzero_genes].mean(axis=1)
+    s_mean_inv = (1 / size_factors).mean()
     mu = normed_counts.mean(0)
     sigma = normed_counts.var(0, ddof=1)
     # ddof=1 is to use an unbiased estimator, as in R

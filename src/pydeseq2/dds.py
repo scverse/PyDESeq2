@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 from formulaic_contrasts import FormulaicContrasts  # type: ignore[import-untyped]
 from scipy.optimize import minimize
+from scipy.sparse import issparse  # type: ignore
 from scipy.special import polygamma  # type: ignore
 from scipy.stats import f  # type: ignore
 from scipy.stats import trim_mean  # type: ignore
@@ -33,6 +34,22 @@ from pydeseq2.stats import trimmed_mean
 warnings.simplefilter("ignore", FutureWarning)
 
 
+def _rounded_counts(counts: Any) -> Any:
+    """Round dense or sparse estimated counts without mutating the input."""
+    if isinstance(counts, pd.DataFrame):
+        return counts.round()
+    if isinstance(counts, np.ndarray):
+        return np.rint(counts)
+    if counts.format in {"csr", "csc"}:
+        rounded = counts.copy()
+    else:
+        rounded = counts.tocsr()
+    rounded.sum_duplicates()
+    rounded.data = np.rint(rounded.data)
+    rounded.eliminate_zeros()
+    return rounded
+
+
 class DeseqDataSet(ad.AnnData):
     r"""A class to implement dispersion and log fold-change (LFC) estimation.
 
@@ -43,19 +60,38 @@ class DeseqDataSet(ad.AnnData):
     Parameters
     ----------
     adata
-        AnnData from which to initialize the DeseqDataSet.
-        Must have counts ('X') and sample metadata ('obs') fields.
-        If ``None``, both ``counts`` and ``metadata`` arguments must be provided.
+        AnnData from which to initialize the DeseqDataSet. Must have counts ('X') and
+        sample metadata ('obs') fields. If ``None``, both ``counts`` and ``metadata``
+        arguments must be provided. Compatible pytximport objects with unscaled
+        estimated counts are detected from ``obsm["length"]`` and
+        ``uns["counts_from_abundance"] is None``.
+        Backed AnnData objects are not supported; call ``adata.to_memory()`` before
+        initialization.
+
     counts
-        Raw counts.
-        One column per gene, rows are indexed by sample barcodes.
+        Raw counts. One column per gene, rows are indexed by sample barcodes.
+
     metadata
         DataFrame containing sample metadata.
         Must be indexed by sample barcodes.
+
+    transcript_lengths
+        Average transcript lengths for each sample and gene, typically imported from
+        transcript-level quantification with unscaled estimated counts (tximport's
+        ``countsFromAbundance="no"`` mode). Scaled TPM-derived counts must not be paired
+        with these offsets. Must have the same sample-by-gene shape and ordering as
+        ``counts``. When provided, PyDESeq2
+        constructs gene- and sample-specific normalization factors that correct for
+        transcript-length changes as well as library size. Estimated counts are rounded
+        to the nearest integer, matching DESeq2. Explicit lengths take precedence over
+        ``adata.layers["avg_tx_length"]``, which takes precedence over compatible
+        pytximport fields. (default: ``None``).
+
     design
-        Model design.
-        Can be either a pandas DataFrame representing a design matrix, or a formulaic formula in the format ``'x + z'`` or ``'~x+z'``.
-        If a design matrix is provided, DeseqStats built from this DeseqDataSet will only support contrasts in the form of numeric vectors.
+        Model design. Can be either a pandas DataFrame representing a design matrix, or
+        a formulaic formula in the format ``'x + z'`` or ``'~x+z'``.
+        If a design matrix is provided, DeseqStats built from this DeseqDataSet will
+        only support contrasts in the form of numeric vectors.
         (Default: ``'~condition')``.
     design_factors
         Depecated.
@@ -122,6 +158,9 @@ class DeseqDataSet(ad.AnnData):
         Stores "dispersions" and "LFC", among others.
     layers
         Key-indexed multi-dimensional arrays aligned to dimensions of `X`, e.g. "cooks".
+        Average transcript lengths and the resulting factors are stored as
+        ``"avg_tx_length"`` and ``"normalization_factors"``, respectively.
+
     n_processes
         Number of cpus to use for multiprocessing.
     non_zero_idx
@@ -167,6 +206,7 @@ class DeseqDataSet(ad.AnnData):
         adata: ad.AnnData | None = None,
         counts: pd.DataFrame | None = None,
         metadata: pd.DataFrame | None = None,
+        transcript_lengths: pd.DataFrame | np.ndarray | None = None,
         design: str | pd.DataFrame = "~condition",
         design_factors: str | list[str] | None = None,
         continuous_factors: list[str] | None = None,
@@ -186,7 +226,48 @@ class DeseqDataSet(ad.AnnData):
         low_memory: bool = False,
     ) -> None:
         # Initialize the AnnData part
+        has_stored_transcript_lengths = (
+            adata is not None and "avg_tx_length" in adata.layers
+        )
+        selected_transcript_lengths: Any = transcript_lengths
+        has_transcript_lengths = (
+            selected_transcript_lengths is not None or has_stored_transcript_lengths
+        )
+        preserve_inherited_fit = False
         if adata is not None:
+            has_pytximport_fields = (
+                "length" in adata.obsm and "counts_from_abundance" in adata.uns
+            )
+            has_transcript_lengths = has_transcript_lengths or has_pytximport_fields
+            counts_from_abundance = adata.uns.get("counts_from_abundance")
+            if counts_from_abundance is not None and has_transcript_lengths:
+                raise ValueError(
+                    "pytximport transcript-length offsets require unscaled "
+                    "estimated counts with "
+                    "adata.uns['counts_from_abundance'] set to None; got "
+                    f"{counts_from_abundance!r}. Abundance-scaled counts must "
+                    "not be combined with transcript-length offsets."
+                )
+            if (
+                has_pytximport_fields
+                and selected_transcript_lengths is None
+                and not has_stored_transcript_lengths
+            ):
+                selected_transcript_lengths = adata.obsm["length"]
+
+            preserve_inherited_fit = (
+                selected_transcript_lengths is None
+                and has_stored_transcript_lengths
+                and "normalization_factors" in adata.layers
+            )
+
+            if adata.isbacked:
+                raise ValueError(
+                    "DeseqDataSet requires an in-memory AnnData object. Call "
+                    "adata.to_memory() before initialization."
+                )
+            expected_length_index = adata.obs_names
+            expected_length_columns = adata.var_names
             if counts is not None:
                 warnings.warn(
                     "adata was provided; ignoring counts.", UserWarning, stacklevel=2
@@ -195,21 +276,96 @@ class DeseqDataSet(ad.AnnData):
                 warnings.warn(
                     "adata was provided; ignoring metadata.", UserWarning, stacklevel=2
                 )
+            prepared_counts: Any = adata.X
+            if has_transcript_lengths:
+                prepared_counts = _rounded_counts(prepared_counts)
+            elif issparse(prepared_counts):
+                sparse_counts = cast(Any, prepared_counts)
+                if sparse_counts.format not in {"csr", "csc"}:
+                    prepared_counts = sparse_counts.tocsr()
+                    prepared_counts.sum_duplicates()
+                elif not sparse_counts.has_canonical_format:
+                    prepared_counts = sparse_counts.copy()
+                    prepared_counts.sum_duplicates()
             # Test counts before going further
-            adata_counts = cast(np.ndarray, adata.X)
-            test_valid_counts(adata_counts)
-            # Copy fields from original AnnData
-            self.__dict__.update(adata.__dict__)
-            # Cast counts to ints to avoid any issue
-            self.X = adata_counts.astype(int)
+            test_valid_counts(prepared_counts)
+            integer_counts = prepared_counts.astype(int)
+            if has_transcript_lengths:
+                # Own the containers PyDESeq2 writes while retaining references to
+                # existing large aligned matrices.
+                # AnnData migrates legacy neighbor matrices out of uns in place.
+                owned_uns = dict(adata.uns)
+                if "neighbors" in owned_uns:
+                    owned_uns["neighbors"] = dict(owned_uns["neighbors"])
+                super().__init__(
+                    X=integer_counts,
+                    obs=cast(pd.DataFrame, adata.obs).copy(),
+                    var=cast(pd.DataFrame, adata.var).copy(),
+                    uns=None,
+                    obsm=cast(Any, dict(adata.obsm)),
+                    varm=cast(Any, dict(adata.varm)),
+                    obsp=cast(Any, dict(adata.obsp)),
+                    varp=cast(Any, dict(adata.varp)),
+                    # AnnData 0.13 can expose X as a None-keyed layer item.
+                    layers={
+                        key: value
+                        for key, value in adata.layers.items()
+                        if key is not None
+                    },
+                    raw=cast(Any, adata.raw),
+                )
+                self.uns.update(owned_uns)
+            else:
+                self.__dict__.update(adata.__dict__)
+                # AnnData 0.13 stores X under the None layer key. Detach the
+                # container so assigning self.X does not modify the input AnnData.
+                if None in self.__dict__.get("_layers", {}):
+                    self.__dict__["_layers"] = self.__dict__["_layers"].copy()
+                self.X = integer_counts
         elif counts is not None and metadata is not None:
+            expected_length_index = counts.index
+            expected_length_columns = counts.columns
+            prepared_counts = (
+                _rounded_counts(counts) if has_transcript_lengths else counts
+            )
             # Test counts before going further
-            test_valid_counts(counts)
-            super().__init__(X=counts.astype(int), obs=metadata)
+            test_valid_counts(prepared_counts)
+            super().__init__(X=prepared_counts.astype(int), obs=metadata)
         else:
             raise ValueError(
                 "Either adata or both counts and metadata arguments must be provided."
             )
+
+        if selected_transcript_lengths is not None:
+            if isinstance(selected_transcript_lengths, pd.DataFrame):
+                if not selected_transcript_lengths.index.equals(expected_length_index):
+                    raise ValueError(
+                        "transcript_lengths must have the same sample index as counts."
+                    )
+                if not selected_transcript_lengths.columns.equals(
+                    expected_length_columns
+                ):
+                    raise ValueError(
+                        "transcript_lengths must have the same gene columns as counts."
+                    )
+                transcript_lengths_array = selected_transcript_lengths.to_numpy(
+                    dtype=float, copy=True
+                )
+            else:
+                transcript_lengths_array = np.array(
+                    selected_transcript_lengths, dtype=float, copy=True
+                )
+            self._validate_transcript_lengths(transcript_lengths_array)
+            self.layers["avg_tx_length"] = transcript_lengths_array
+        elif "avg_tx_length" in self.layers:
+            stored_lengths = self.layers["avg_tx_length"]
+            transcript_lengths_array = (
+                cast(Any, stored_lengths).toarray()
+                if hasattr(stored_lengths, "toarray")
+                else np.asarray(stored_lengths, dtype=float)
+            )
+            self._validate_transcript_lengths(transcript_lengths_array)
+            self.layers["avg_tx_length"] = transcript_lengths_array
 
         self.fit_type = fit_type
         self.design = design
@@ -266,6 +422,87 @@ class DeseqDataSet(ad.AnnData):
         # Check that the design matrix has full rank
         self._check_full_rank_design()
 
+        if preserve_inherited_fit and adata is not None:
+            source_design = adata.obsm.get("design_matrix")
+            normalization_control_mask = self._make_control_mask(control_genes)
+            fit_settings = (
+                ("fit_type", fit_type),
+                ("min_mu", min_mu),
+                ("min_disp", min_disp),
+                ("max_disp", np.maximum(max_disp, self.n_obs)),
+                ("refit_cooks", refit_cooks),
+                ("min_replicates", min_replicates),
+                ("beta_tol", beta_tol),
+            )
+            preserve_inherited_fit = (
+                isinstance(source_design, pd.DataFrame)
+                and cast(pd.DataFrame, self.obsm["design_matrix"]).equals(source_design)
+                and all(
+                    hasattr(adata, attr) and np.array_equal(getattr(adata, attr), value)
+                    for attr, value in fit_settings
+                )
+                and getattr(adata, "_normalization_fit_type", None)
+                == size_factors_fit_type
+                and hasattr(adata, "_normalization_control_mask")
+                and np.array_equal(
+                    adata._normalization_control_mask,
+                    normalization_control_mask,
+                )
+                and hasattr(adata, "inference")
+                and (
+                    type(adata.inference) is DefaultInference
+                    if inference is None
+                    else inference is adata.inference
+                )
+            )
+
+        if adata is not None and has_transcript_lengths and not preserve_inherited_fit:
+            # Invalidate fitting state derived from copied normalization factors.
+            for column in ("size_factors", "replaceable"):
+                if column in self.obs:
+                    del self.obs[column]
+            for column in (
+                "_normed_means",
+                "non_zero",
+                "_MoM_dispersions",
+                "genewise_dispersions",
+                "vst_genewise_dispersions",
+                "_genewise_converged",
+                "fitted_dispersions",
+                "MAP_dispersions",
+                "_MAP_converged",
+                "dispersions",
+                "_outlier_genes",
+                "_LFC_converged",
+                "replaced",
+                "refitted",
+                "_pvalue_cooks_outlier",
+            ):
+                if column in self.var:
+                    del self.var[column]
+            for layer in (
+                "normalization_factors",
+                "normed_counts",
+                "_mu_hat",
+                "_vst_mu_hat",
+                "vst_counts",
+                "cooks",
+                "replace_cooks",
+            ):
+                self.layers.pop(layer, None)
+            for key in ("_mu_LFC", "_hat_diagonals"):
+                self.obsm.pop(key, None)
+            self.varm.pop("LFC", None)
+            for key in (
+                "trend_coeffs",
+                "vst_trend_coeffs",
+                "mean_disp",
+                "disp_function_type",
+                "_squared_logres",
+                "prior_disp_var",
+            ):
+                self.uns.pop(key, None)
+
         self.min_mu = min_mu
         self.min_disp = min_disp
         self.max_disp = np.maximum(max_disp, self.n_obs)
@@ -292,7 +529,115 @@ class DeseqDataSet(ad.AnnData):
                     )
 
         # Initialize the inference object.
-        self.inference = inference or DefaultInference(n_cpus=n_cpus)
+        self.inference: Inference = inference or DefaultInference(n_cpus=n_cpus)
+
+        if preserve_inherited_fit and adata is not None:
+            if "LFC" in self.varm:
+                self.varm["LFC"] = self.varm["LFC"].copy()
+
+            self._normalization_fit_type: str | None = cast(
+                Any, adata
+            )._normalization_fit_type
+            self._normalization_control_mask: np.ndarray = cast(
+                Any, adata
+            )._normalization_control_mask.copy()
+
+            for attr in (
+                "non_zero_idx",
+                "non_zero_genes",
+                "counts_to_refit",
+                "new_all_zeroes_genes",
+            ):
+                if hasattr(adata, attr):
+                    setattr(self, attr, getattr(adata, attr).copy())
+
+            if hasattr(adata, "vst_fit_type"):
+                self.vst_fit_type: Literal["parametric", "mean"] = adata.vst_fit_type
+
+    def _validate_transcript_lengths(self, transcript_lengths: np.ndarray) -> None:
+        """Validate a sample-by-gene average transcript-length matrix."""
+        if transcript_lengths.shape != self.shape:
+            raise ValueError(
+                "transcript_lengths must have the same shape as counts "
+                f"({self.shape}), got {transcript_lengths.shape}."
+            )
+        if not np.isfinite(transcript_lengths).all():
+            raise ValueError("transcript_lengths must only contain finite values.")
+        if (transcript_lengths <= 0).any():
+            raise ValueError("transcript_lengths must contain only positive values.")
+
+    def _make_control_mask(self, control_genes: Any) -> np.ndarray:
+        """Return a gene mask for the selected normalization controls."""
+        if control_genes is None:
+            return np.ones(self.n_vars, dtype=bool)
+        control_mask = np.zeros(self.n_vars, dtype=bool)
+        control_mask[
+            cast(np.ndarray, self._normalize_indices((slice(None), control_genes))[1])
+        ] = True
+        return control_mask
+
+    def _get_normalization_factors(self, gene_idx: Any = None) -> np.ndarray:
+        """Return normalization factors, optionally restricted to genes."""
+        if "normalization_factors" in self.layers:
+            factors = np.asarray(self.layers["normalization_factors"])
+            return factors if gene_idx is None else factors[:, gene_idx]
+        return self.obs["size_factors"].to_numpy()
+
+    def _fit_transcript_length_factors(
+        self,
+        fit_type: Literal["ratio", "poscounts"],
+        control_mask: np.ndarray,
+    ) -> None:
+        """Fit DESeq2-style normalization factors from average transcript lengths."""
+        counts = cast(Any, self.X).toarray() if issparse(self.X) else np.asarray(self.X)
+        transcript_lengths = np.asarray(self.layers["avg_tx_length"])
+
+        # DESeq2 centers each gene's average transcript lengths around a geometric
+        # mean of one before estimating library-size factors on adjusted counts.
+        length_factors = transcript_lengths / np.exp(
+            np.mean(np.log(transcript_lengths), axis=0)
+        )
+        adjusted_counts = counts / length_factors
+
+        if fit_type == "ratio":
+            self.logmeans, self.filtered_genes = deseq2_norm_fit(adjusted_counts)
+        else:
+            log_counts = np.zeros_like(counts, dtype=float)
+            np.log(counts, out=log_counts, where=counts != 0)
+            self.logmeans = log_counts.mean(axis=0)
+            self.filtered_genes = counts.sum(axis=0) > 0
+
+        usable_genes = control_mask & self.filtered_genes
+        if not usable_genes.any():
+            raise ValueError(
+                "No genes are available to estimate size factors after applying "
+                "transcript-length and control-gene filters."
+            )
+
+        log_size_factors = np.empty(self.n_obs)
+        for sample_idx in range(self.n_obs):
+            sample_genes = usable_genes & (adjusted_counts[sample_idx] > 0)
+            if not sample_genes.any():
+                raise ValueError(
+                    "At least one sample has no positive counts among the genes "
+                    "available for transcript-length normalization."
+                )
+            log_size_factors[sample_idx] = np.median(
+                np.log(adjusted_counts[sample_idx, sample_genes])
+                - self.logmeans[sample_genes]
+            )
+
+        # estimateNormFactors() in DESeq2 returns a matrix whose gene-wise geometric
+        # means are one. Retain the library-size component separately for backwards
+        # compatibility, while using the full matrix throughout model fitting.
+        size_factors = np.exp(log_size_factors)
+        size_factors /= np.exp(np.mean(np.log(size_factors)))
+        normalization_factors = length_factors * size_factors[:, None]
+        normalization_factors /= np.exp(np.mean(np.log(normalization_factors), axis=0))
+
+        self.obs["size_factors"] = size_factors
+        self.layers["normalization_factors"] = normalization_factors
+        self.layers["normed_counts"] = counts / normalization_factors
 
     @property
     def variables(self):
@@ -358,7 +703,7 @@ class DeseqDataSet(ad.AnnData):
         """
         # Start by fitting median-of-ratio size factors if not already present,
         # or if they were computed iteratively
-        if "size_factors" not in self.obsm or self.logmeans is None:
+        if "size_factors" not in self.obs or self.logmeans is None:
             self.fit_size_factors(
                 fit_type=self.size_factors_fit_type
             )  # by default, fit_type != "iterative"
@@ -415,6 +760,12 @@ class DeseqDataSet(ad.AnnData):
         if "size_factors" not in self.obs:
             raise RuntimeError(
                 "The vst_fit method should be called prior to vst_transform."
+            )
+
+        if counts is not None and "avg_tx_length" in self.layers:
+            raise ValueError(
+                "Transforming external counts with transcript-length normalization "
+                "requires matching transcript lengths, which are not yet supported."
             )
 
         if counts is None:
@@ -593,30 +944,34 @@ class DeseqDataSet(ad.AnnData):
                         " DeseqDataSet initialization"
                     )
 
-        # If control genes are provided, set a mask where those genes are True
-        # This will override self.control_genes
-        if control_genes is not None:
-            _control_mask = np.zeros(self.X.shape[1], dtype=bool)
+        _control_mask = self._make_control_mask(control_genes)
+        normalization_control_mask = _control_mask.copy()
 
-            # Use AnnData internal indexing to get gene index array
-            # Allows bool/int/var_name to be provided
-            _control_mask[
-                cast(
-                    np.ndarray, self._normalize_indices((slice(None), control_genes))[1]
+        if "avg_tx_length" not in self.layers and "normalization_factors" in self.layers:
+            del self.layers["normalization_factors"]
+
+        if "avg_tx_length" in self.layers:
+            if fit_type == "iterative":
+                raise ValueError(
+                    "The iterative size-factor method does not support "
+                    "transcript-length normalization. Use 'ratio' or 'poscounts'."
                 )
-            ] = True
+            self._fit_transcript_length_factors(
+                fit_type=fit_type,
+                control_mask=_control_mask,
+            )
 
-        # Otherwise mask all genes to be True
-        else:
-            _control_mask = np.ones(self.X.shape[1], dtype=bool)
-
-        if fit_type == "iterative":
+        elif fit_type == "iterative":
             self._fit_iterate_size_factors()
 
         elif fit_type == "poscounts":
+            counts = (
+                cast(Any, self.X).toarray() if issparse(self.X) else np.asarray(self.X)
+            )
+
             # Calculate logcounts for x > 0 and take the mean for each gene
-            log_counts = np.zeros_like(self.X, dtype=float)
-            np.log(self.X, out=log_counts, where=self.X != 0)
+            log_counts = np.zeros_like(counts, dtype=float)
+            np.log(counts, out=log_counts, where=counts != 0)
             logmeans = log_counts.mean(axis=0)
 
             # Determine which genes are usable (finite logmeans)
@@ -628,18 +983,22 @@ class DeseqDataSet(ad.AnnData):
                 _mask = np.logical_and(_control_mask, x > 0)
                 return np.exp(np.median(np.log(x[_mask]) - logmeans[_mask]))
 
-            sf = np.apply_along_axis(sizeFactor, 1, self.X)
+            sf = np.apply_along_axis(sizeFactor, 1, counts)
             del log_counts
 
             # Normalize size factors to a geometric mean of 1 to match DESeq
             self.obs["size_factors"] = sf / (np.exp(np.mean(np.log(sf))))
             self.layers["normed_counts"] = (
-                self.X / self.obs["size_factors"].to_numpy()[:, None]
+                counts / self.obs["size_factors"].to_numpy()[:, None]
             )
             self.logmeans = logmeans
 
         # Test whether it is possible to use median-of-ratios.
-        elif (self.X == 0).any(0).all():
+        elif (
+            (np.asarray((cast(Any, self.X) != 0).sum(axis=0)).ravel() < self.n_obs).all()
+            if issparse(self.X)
+            else (self.X == 0).any(0).all()
+        ):
             # There is at least a zero for each gene
             warnings.warn(
                 "Every gene contains at least one zero, "
@@ -650,9 +1009,10 @@ class DeseqDataSet(ad.AnnData):
             self._fit_iterate_size_factors()
 
         elif self.X is not None:
-            self.logmeans, self.filtered_genes = deseq2_norm_fit(
-                self.X.toarray() if not isinstance(self.X, np.ndarray) else self.X
+            counts = (
+                cast(Any, self.X).toarray() if issparse(self.X) else np.asarray(self.X)
             )
+            self.logmeans, self.filtered_genes = deseq2_norm_fit(counts)
             _control_mask &= self.filtered_genes
 
             (
@@ -661,7 +1021,7 @@ class DeseqDataSet(ad.AnnData):
             ) = cast(
                 "tuple[np.ndarray, np.ndarray]",
                 deseq2_norm_transform(
-                    self.X, cast(np.ndarray, self.logmeans), _control_mask
+                    counts, cast(np.ndarray, self.logmeans), _control_mask
                 ),
             )
         else:
@@ -669,6 +1029,8 @@ class DeseqDataSet(ad.AnnData):
 
         end = time.time()
         self.var["_normed_means"] = self.layers["normed_counts"].mean(axis=0)
+        self._normalization_fit_type = fit_type
+        self._normalization_control_mask = normalization_control_mask
 
         if not self.quiet:
             print(f"... done in {end - start:.2f} seconds.\n", file=sys.stderr)
@@ -688,7 +1050,7 @@ class DeseqDataSet(ad.AnnData):
             self.fit_size_factors(fit_type=self.size_factors_fit_type)
 
         # Exclude genes with all zeroes
-        self.var["non_zero"] = ~(self.X == 0).all(axis=0)
+        self.var["non_zero"] = np.asarray((self.X != 0).sum(axis=0)).ravel() > 0
         self.non_zero_idx = np.arange(self.n_vars)[self.var["non_zero"]]
         self.non_zero_genes = self.var_names[self.var["non_zero"]]
 
@@ -700,7 +1062,7 @@ class DeseqDataSet(ad.AnnData):
 
         # Convert design_matrix to numpy for speed
         design_matrix = self.obsm["design_matrix"].values
-        size_factors = self.obs["size_factors"].to_numpy()
+        size_factors = self._get_normalization_factors(self.non_zero_idx)
 
         # mu_hat is initialized differently depending on the number of different factor
         # groups. If there are as many different factor combinations as design factors
@@ -911,9 +1273,10 @@ class DeseqDataSet(ad.AnnData):
         if not self.quiet:
             print("Fitting LFCs...", file=sys.stderr)
         start = time.time()
+        normalization_factors = self._get_normalization_factors(self.non_zero_idx)
         mle_lfcs_, mu_, hat_diagonals_, converged_ = self.inference.irls(
             counts=self.X[:, self.non_zero_idx],
-            size_factors=self.obs["size_factors"].to_numpy(),
+            size_factors=normalization_factors,
             design_matrix=design_matrix,
             disp=self.var.loc[self.var["non_zero"], "dispersions"].values,
             min_mu=self.min_mu,
@@ -966,7 +1329,13 @@ class DeseqDataSet(ad.AnnData):
         )
 
         # Calculate the squared pearson residuals for non-zero features
-        squared_pearson_res = self.X[:, self.var["non_zero"]] - self.obsm["_mu_LFC"]
+        counts = self.X[:, self.non_zero_idx]
+        if hasattr(counts, "tocoo"):
+            counts = counts.tocoo()
+            squared_pearson_res = -self.obsm["_mu_LFC"]
+            np.add.at(squared_pearson_res, (counts.row, counts.col), counts.data)
+        else:
+            squared_pearson_res = counts - self.obsm["_mu_LFC"]
         squared_pearson_res **= 2
 
         # Calculate the overdispersion parameter tau
@@ -1054,11 +1423,14 @@ class DeseqDataSet(ad.AnnData):
                 axis=0
             )
 
-        pos = self.layers["cooks"][:, cooks_outlier].argmax(0)
-
-        cooks_outlier[cooks_outlier] = (
-            self.X[:, cooks_outlier] > self.X[:, cooks_outlier][pos, np.arange(len(pos))]
-        ).sum(axis=0) < 3
+        pos = np.asarray(self.layers["cooks"][:, cooks_outlier].argmax(0)).ravel()
+        for gene_idx, sample_idx in zip(np.flatnonzero(cooks_outlier), pos, strict=True):
+            gene_counts = (
+                cast(Any, self.X)[:, [gene_idx]].toarray().ravel()
+                if issparse(self.X)
+                else np.asarray(self.X[:, gene_idx]).ravel()
+            )
+            cooks_outlier[gene_idx] = (gene_counts > gene_counts[sample_idx]).sum() < 3
 
         if self.low_memory:
             del self.layers["cooks"]
@@ -1110,8 +1482,9 @@ class DeseqDataSet(ad.AnnData):
             normed_counts,
             self.obsm["design_matrix"].values,
         )
+        normalization_factors = self._get_normalization_factors(self.non_zero_idx)
         mde = self.inference.fit_moments_dispersions(
-            normed_counts, self.obs["size_factors"].to_numpy()
+            normed_counts, normalization_factors
         )
         alpha_hat = np.minimum(rde, mde)
 
@@ -1280,35 +1653,33 @@ class DeseqDataSet(ad.AnnData):
         self.var["replaced"] = idx.any(axis=0)
 
         if sum(self.var["replaced"] > 0):
-            # Compute replacement counts: trimmed means * size_factors
+            # Compute replacement counts: trimmed means * normalization factors
             self.counts_to_refit = self[:, self.var["replaced"]].copy()
+            if hasattr(self.counts_to_refit.X, "toarray"):
+                self.counts_to_refit.X = cast(Any, self.counts_to_refit.X).toarray()
             counts_to_refit_X = cast(np.ndarray, self.counts_to_refit.X)
-
-            trim_base_mean = pd.DataFrame(
-                np.asarray(
-                    trimmed_mean(
-                        counts_to_refit_X / self.obs["size_factors"].to_numpy()[:, None],
-                        trim=0.2,
-                        axis=0,
-                    )
-                ),
-                index=self.counts_to_refit.var_names,
+            normalization_factors = self._get_normalization_factors(
+                self.var["replaced"].to_numpy()
             )
+            if normalization_factors.ndim == 1:
+                normalization_factors = normalization_factors[:, None]
 
-            replacement_counts = (
-                pd.DataFrame(
-                    trim_base_mean.values * self.obs["size_factors"].values,
-                    index=self.counts_to_refit.var_names,
-                    columns=self.counts_to_refit.obs_names,
+            trim_base_mean = np.asarray(
+                trimmed_mean(
+                    counts_to_refit_X / normalization_factors,
+                    trim=0.2,
+                    axis=0,
                 )
-                .astype(int)
-                .T
+            )
+            replacement_counts = np.asarray(
+                trim_base_mean[None, :] * normalization_factors,
+                dtype=int,
             )
 
             counts_to_refit_X[
                 self.obs["replaceable"].to_numpy()[:, None]
                 & idx[:, self.var["replaced"]]
-            ] = replacement_counts.values[
+            ] = replacement_counts[
                 self.obs["replaceable"].to_numpy()[:, None]
                 & idx[:, self.var["replaced"]]
             ]
@@ -1363,11 +1734,16 @@ class DeseqDataSet(ad.AnnData):
             quiet=self.quiet,
         )
 
-        # Use the same size factors
+        # Use the same normalization factors
         sub_dds.obs["size_factors"] = self.counts_to_refit.obs["size_factors"]
-        sub_dds.layers["normed_counts"] = (
-            sub_dds.X / sub_dds.obs["size_factors"].to_numpy()[:, None]
-        )
+        if "normalization_factors" in self.counts_to_refit.layers:
+            sub_dds.layers["normalization_factors"] = cast(
+                np.ndarray, self.counts_to_refit.layers["normalization_factors"]
+            )
+        normalization_factors = sub_dds._get_normalization_factors()
+        if normalization_factors.ndim == 1:
+            normalization_factors = normalization_factors[:, None]
+        sub_dds.layers["normed_counts"] = sub_dds.X / normalization_factors
 
         # Estimate gene-wise dispersions.
         sub_dds.fit_genewise_dispersions()
@@ -1427,9 +1803,13 @@ class DeseqDataSet(ad.AnnData):
             Quantile value at which negative likelihood is cut in the optimization (default: ``0.95``).
 
         """
+        self.logmeans = None
+        self.filtered_genes = None
+        counts = cast(Any, self.X).toarray() if issparse(self.X) else np.asarray(self.X)
+
         # Initialize size factors and normed counts fields
         self.obs["size_factors"] = np.ones(self.n_obs)
-        self.layers["normed_counts"] = self.X
+        self.layers["normed_counts"] = counts
 
         # Reduce the design matrix to an intercept and reconstruct at the end
         self.obsm["design_matrix_buffer"] = self.obsm["design_matrix"].copy()
@@ -1441,9 +1821,9 @@ class DeseqDataSet(ad.AnnData):
         def objective(p):
             sf = np.exp(p - np.mean(p))
             nll = nb_nll(
-                counts=self[:, self.non_zero_genes].X,
+                counts=counts[:, self.non_zero_idx],
                 mu=self[:, self.non_zero_genes].layers["_mu_hat"]
-                / self.obs["size_factors"].values[:, None]
+                / self.obs["size_factors"].to_numpy()[:, None]
                 * sf[:, None],
                 alpha=self.var.loc[self.non_zero_genes, "dispersions"].values,
             )
@@ -1500,7 +1880,7 @@ class DeseqDataSet(ad.AnnData):
 
         # Store normalized counts
         self.layers["normed_counts"] = (
-            self.X / self.obs["size_factors"].to_numpy()[:, None]
+            counts / self.obs["size_factors"].to_numpy()[:, None]
         )
 
     def _check_full_rank_design(self):

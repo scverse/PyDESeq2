@@ -3,9 +3,20 @@ from unittest import mock
 
 import numpy as np
 import pytest
+from scipy.sparse import bsr_array
+from scipy.sparse import bsr_matrix
+from scipy.sparse import coo_array
+from scipy.sparse import coo_matrix
+from scipy.sparse import dia_array
+from scipy.sparse import dia_matrix
+from scipy.sparse import dok_array
+from scipy.sparse import dok_matrix
+from scipy.sparse import lil_array
+from scipy.sparse import lil_matrix
 
 from pydeseq2.datasets import load_example_data
 from pydeseq2.distributions import nb_nll
+from pydeseq2.misc import test_valid_counts as validate_counts
 
 
 @pytest.mark.parametrize("mu, alpha", [(10, 0.5), (10, 0.1), (3, 0.5), (9, 0.05)])
@@ -52,3 +63,46 @@ def test_rtd_example_data_loading(mocked_function, modality, mocked_dir_flag):
         dataset="synthetic",
         debug=False,
     )
+
+
+@pytest.mark.parametrize(
+    "sparse_constructor",
+    [
+        bsr_matrix,
+        coo_matrix,
+        dia_matrix,
+        dok_matrix,
+        lil_matrix,
+        bsr_array,
+        coo_array,
+        dia_array,
+        dok_array,
+        lil_array,
+    ],
+)
+def test_valid_sparse_count_formats(sparse_constructor):
+    validate_counts(sparse_constructor([[1, 0], [0, 2]]))
+
+
+@pytest.mark.parametrize("sparse_constructor", [dia_matrix, dia_array])
+def test_valid_dia_counts_ignore_padding(sparse_constructor):
+    counts = sparse_constructor(
+        (np.array([[-1, 2]]), np.array([1])),
+        shape=(2, 2),
+    )
+    np.testing.assert_array_equal(counts.toarray(), [[0, 2], [0, 0]])
+    validate_counts(counts)
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        (np.nan, "NaNs"),
+        (1.5, "integers"),
+        (-1, "non-negative"),
+        (True, "only contain numbers"),
+    ],
+)
+def test_invalid_general_sparse_counts(value, message):
+    with pytest.raises(ValueError, match=message):
+        validate_counts(dok_matrix([[value]]))
