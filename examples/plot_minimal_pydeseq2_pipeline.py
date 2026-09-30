@@ -299,6 +299,46 @@ if SAVE:
 print(ds.shrunk_LFCs)  # Will be True only if lfc_shrink() was run.
 
 # %%
+# .. _reference_level_ref:
+#
+# Choosing a reference level for shrinkage
+# """"""""""""""""""""""""""""""""""""""""""""""""""
+#
+# A statistical ``contrast`` can compare any two levels, but
+# :meth:`lfc_shrink() <DeseqStats.lfc_shrink>` requires a single fitted coefficient.
+# For example, with three conditions A, B and C and A as the reference, C versus B
+# is a difference of coefficients, not a column to pass to ``lfc_shrink``.
+# Choose the required reference in the design formula before fitting instead.
+# The deprecated ``ref_level`` argument has no effect.
+#
+# Using our two-condition synthetic data, we choose B as the reference and fit a
+# new dataset to obtain the A-versus-B coefficient. ``C()`` marks a variable as
+# categorical; this also matters when category labels are numbers (e.g. batch IDs).
+# ``contr.treatment(base='B')`` selects the reference category. See Formulaic's
+# `treatment coding documentation
+# <https://matthewwardrop.github.io/formulaic/latest/guides/contrasts/#treatment-aka-dummy>`_.
+
+dds_ref_b = DeseqDataSet(
+    counts=counts_df,
+    metadata=metadata,
+    design="~ C(condition, contr.treatment(base='B'))",
+    inference=inference,
+)
+dds_ref_b.deseq2()
+
+# %%
+# Formula-based coding changes the coefficient names. Inspect the fitted columns
+# rather than reusing ``"condition[T.B]"`` from the previous design. We also choose
+# the matching A-versus-B contrast, so the Wald results and shrunk LFCs describe
+# the same comparison. Do not replace the design matrix of an already fitted
+# object without refitting its coefficients.
+
+print(dds_ref_b.varm["LFC"].columns)
+ds_A_vs_B = DeseqStats(dds_ref_b, contrast=["condition", "A", "B"], inference=inference)
+ds_A_vs_B.summary()
+ds_A_vs_B.lfc_shrink(coeff="C(condition, contr.treatment(base='B'))[T.A]")
+
+# %%
 # .. _multifactor_ref:
 #
 # Multifactor analysis
