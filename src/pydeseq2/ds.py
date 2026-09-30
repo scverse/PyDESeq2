@@ -324,7 +324,6 @@ class DeseqStats:
             self.statistics.loc[self.dds.new_all_zeroes_genes] = 0.0
             self.p_values.loc[self.dds.new_all_zeroes_genes] = 1.0
 
-    # TODO update this to reflect the new contrast format
     def lfc_shrink(self, coeff: str, adapt: bool = True) -> None:
         """LFC shrinkage with an apeGLM prior :cite:p:`DeseqStats-zhu2019heavy`.
 
@@ -333,11 +332,23 @@ class DeseqStats:
         Parameters
         ----------
         coeff
-            The LFC coefficient to shrink.
-            Must be one of the columns of the LFC matrix. (default: ``None``).
+            The name of the fitted LFC coefficient to shrink. Must be a column of
+            ``self.LFC`` (also a column of ``dds.obsm["design_matrix"]``), not a
+            contrast vector or a list of factor levels.
         adapt
             Whether to use the MLE estimates of LFC to adapt the prior.
             If False, the prior scale is set to 1. (``default=True``)
+
+        Notes
+        -----
+        Changing the ``contrast`` passed to :class:`DeseqStats` does not create a
+        new fitted coefficient. If the desired comparison is not a single
+        coefficient, choose its reference level in the design formula before
+        fitting a new :class:`~pydeseq2.dds.DeseqDataSet`, for example
+        ``design="~ C(condition, contr.treatment(base='B'))"``. Inspect
+        ``dds.varm["LFC"].columns`` for the resulting coefficient names and use a
+        matching contrast when creating :class:`DeseqStats`. See the
+        :ref:`reference-level example <reference_level_ref>`.
         """
         if coeff not in self.LFC.columns:
             raise KeyError(
