@@ -1,33 +1,33 @@
 name: Release
 
 on:
-  release:
-    types: [published]
+    release:
+        types: [published]
 
 # Use "trusted publishing", see https://docs.pypi.org/trusted-publishers/
 permissions: {}
 
 jobs:
-  release:
-    name: Upload release to PyPI
-    runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/pydeseq2
-    permissions:
-      contents: read
-      id-token: write # IMPORTANT: this permission is mandatory for trusted publishing
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          filter: blob:none
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          enable-cache: false
-      - name: Build package
-        run: uv build
-      - name: Publish package distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+    release:
+        name: Upload release to PyPI
+        runs-on: ubuntu-latest
+        environment:
+            name: pypi
+            url: https://pypi.org/p/pydeseq2
+        permissions:
+            contents: read
+            id-token: write # IMPORTANT: this permission is mandatory for trusted publishing
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  filter: blob:none
+                  fetch-depth: 0
+                  persist-credentials: false
+            - name: Install uv
+              uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+              with:
+                  enable-cache: false
+            - name: Build package
+              run: uv build
+            - name: Publish package distributions to PyPI
+              uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
