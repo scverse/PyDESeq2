@@ -1,9 +1,16 @@
 """Helpers that do not belong to any single step of the pipeline."""
 
 import multiprocessing
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pandas as pd
+from joblib import cpu_count  # type: ignore
+
+# Columns per task in the main process's threaded passes over the count matrix,
+# and the matrix size (samples x genes) below which they run serially.
+_CHUNK_COLS = 1024
+_MIN_THREADED_SIZE = 1 << 18
 
 
 def test_valid_counts(counts: pd.DataFrame | np.ndarray) -> None:
@@ -80,3 +87,70 @@ def get_num_processes(n_cpus: int | None) -> int:
         n_processes = n_cpus
 
     return n_processes
+
+
+def _thread_count(n_cpus) -> int:
+    """Return the thread count for the main process's numpy passes.
+
+    That is ``n_cpus`` read as joblib's ``n_jobs``, capped at the usable cores; 1 for
+    anything else.
+    """
+    if isinstance(n_cpus, bool) or not isinstance(n_cpus, int | np.integer):
+        return 1
+    n_cpus = int(n_cpus)
+    if n_cpus == 0:
+        return 1
+    usable = cpu_count()
+    if n_cpus < 0:
+        n_cpus = usable + 1 + n_cpus
+    return max(1, min(n_cpus, usable))
+
+
+def _chunk_bounds(n: int, width: int) -> list[tuple[int, int]]:
+    """Split ``range(n)`` into ``(start, stop)`` chunks of ``width``.
+
+    A one-item tail is merged into the chunk before it.
+
+    numpy reduces along axis 0 of a C-ordered block row by row only when the
+    block has two or more columns; one column is summed pairwise, which changes
+    the low bits.
+    """
+    starts = list(range(0, n, width))
+    if len(starts) > 1 and n - starts[-1] < 2:
+        starts.pop()
+    return list(zip(starts, starts[1:] + [n], strict=True))
+
+
+def _thread_pool(n_threads: int) -> ThreadPoolExecutor:
+    """Return the executor of one threaded pass."""
+    return ThreadPoolExecutor(max_workers=n_threads)
+
+
+def _balanced_width(n: int, n_threads: int, target: int) -> int:
+    """Pick a chunk width that keeps every thread busy.
+
+    The width is near ``target`` and splits ``n`` items into a multiple of
+    ``n_threads`` chunks, so no thread idles through the last round.
+    """
+    n_chunks = n_threads * -(-n // (n_threads * target))
+    return max(2, -(-n // n_chunks))
+
+
+def _map_threads(func, bounds: list[tuple[int, int]], pool: ThreadPoolExecutor) -> list:
+    """``func(start, stop)`` for every bound on ``pool``, results in order."""
+    return list(pool.map(lambda bound: func(*bound), bounds))
+
+
+class _FPFlag:
+    """``np.errstate(call=...)`` target that records any floating-point error.
+
+    numpy's error state is per thread, so the threaded passes run under
+    ``np.errstate(all="call", call=flag)`` and hand over to the serial code,
+    which reports the error the caller's own settings ask for, when it is set.
+    """
+
+    def __init__(self) -> None:
+        self.raised = False
+
+    def __call__(self, kind, flag) -> None:
+        self.raised = True

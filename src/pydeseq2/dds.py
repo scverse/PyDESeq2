@@ -11,19 +11,38 @@ import anndata as ad  # type: ignore
 import numpy as np
 import pandas as pd
 from formulaic_contrasts import FormulaicContrasts  # type: ignore[import-untyped]
+from scipy.linalg import lstsq  # type: ignore
 from scipy.optimize import minimize
 from scipy.special import polygamma  # type: ignore
 from scipy.stats import f  # type: ignore
 from scipy.stats import trim_mean  # type: ignore
 
 from pydeseq2.default_inference import DefaultInference
+from pydeseq2.default_inference import _fits_genewise_in_one_map
+from pydeseq2.default_inference import _fits_MAP_and_LFC_in_one_map
+from pydeseq2.default_inference import _fits_refit_in_one_map
+from pydeseq2.dispersions import _robust_moments_disp_columns
+from pydeseq2.dispersions import _robust_moments_plan
 from pydeseq2.dispersions import dispersion_trend
+from pydeseq2.dispersions import fit_moments_dispersions
+from pydeseq2.dispersions import fit_rough_dispersions
 from pydeseq2.dispersions import robust_method_of_moments_disp
 from pydeseq2.distributions import nb_nll
+from pydeseq2.glm import _linear_regression_cond
 from pydeseq2.inference import Inference
+from pydeseq2.misc import _CHUNK_COLS
+from pydeseq2.misc import _MIN_THREADED_SIZE
+from pydeseq2.misc import _balanced_width
+from pydeseq2.misc import _chunk_bounds
+from pydeseq2.misc import _FPFlag
+from pydeseq2.misc import _map_threads
+from pydeseq2.misc import _thread_count
+from pydeseq2.misc import _thread_pool
 from pydeseq2.misc import n_or_more_replicates
 from pydeseq2.misc import test_valid_counts
 from pydeseq2.plotting import make_scatter
+from pydeseq2.preprocessing import _deseq2_norm_fit_threads
+from pydeseq2.preprocessing import _deseq2_norm_transform_threads
 from pydeseq2.preprocessing import deseq2_norm_fit
 from pydeseq2.preprocessing import deseq2_norm_transform
 from pydeseq2.stats import mean_absolute_deviation
@@ -149,6 +168,10 @@ class DeseqDataSet(ad.AnnData):
         :keyprefix: DeseqDataSet-
 
     """
+
+    # Set while deseq2() runs fit_MAP_dispersions then fit_LFC (_fit_MAP_and_LFC).
+    _fuse_MAP_LFC = False
+    _MAP_LFC_stash: dict | None = None
 
     if TYPE_CHECKING:
         # anndata annotates these for every container it supports; a DeseqDataSet
@@ -501,9 +524,8 @@ class DeseqDataSet(ad.AnnData):
         # Compute prior dispersion variance
         self.fit_dispersion_prior()
         # Refit genewise dispersions a posteriori (shrinks estimates towards trend curve)
-        self.fit_MAP_dispersions()
-        # Fit log-fold changes (in natural log scale)
-        self.fit_LFC()
+        # and fit log-fold changes (in natural log scale)
+        self._fit_MAP_and_LFC()
         # Compute Cooks distances to find outliers
         self.calculate_cooks()
 
@@ -610,6 +632,12 @@ class DeseqDataSet(ad.AnnData):
         else:
             _control_mask = np.ones(self.X.shape[1], dtype=bool)
 
+        n_threads = _thread_count(getattr(self.inference, "n_cpus", 1))
+        fitted = None
+        normed_means = None
+        if fit_type not in ("iterative", "poscounts") and n_threads > 1:
+            fitted = _deseq2_norm_fit_threads(self.X, n_threads)
+
         if fit_type == "iterative":
             self._fit_iterate_size_factors()
 
@@ -639,7 +667,7 @@ class DeseqDataSet(ad.AnnData):
             self.logmeans = logmeans
 
         # Test whether it is possible to use median-of-ratios.
-        elif (self.X == 0).any(0).all():
+        elif fitted[0].all() if fitted is not None else (self.X == 0).any(0).all():
             # There is at least a zero for each gene
             warnings.warn(
                 "Every gene contains at least one zero, "
@@ -650,25 +678,47 @@ class DeseqDataSet(ad.AnnData):
             self._fit_iterate_size_factors()
 
         elif self.X is not None:
-            self.logmeans, self.filtered_genes = deseq2_norm_fit(
-                self.X.toarray() if not isinstance(self.X, np.ndarray) else self.X
-            )
+            if fitted is not None:
+                self.logmeans = fitted[1]
+                self.filtered_genes = ~np.isinf(self.logmeans)
+            else:
+                self.logmeans, self.filtered_genes = deseq2_norm_fit(
+                    self.X.toarray() if not isinstance(self.X, np.ndarray) else self.X
+                )
             _control_mask &= self.filtered_genes
 
-            (
-                self.layers["normed_counts"],
-                self.obs["size_factors"],
-            ) = cast(
-                "tuple[np.ndarray, np.ndarray]",
-                deseq2_norm_transform(
-                    self.X, cast(np.ndarray, self.logmeans), _control_mask
-                ),
+            transformed = (
+                _deseq2_norm_transform_threads(
+                    self.X, self.logmeans, _control_mask, n_threads
+                )
+                if fitted is not None
+                else None
             )
+            if transformed is not None:
+                normed_counts, size_factors, normed_means = transformed
+                self.layers["normed_counts"], self.obs["size_factors"] = (
+                    normed_counts,
+                    size_factors,
+                )
+            else:
+                (
+                    self.layers["normed_counts"],
+                    self.obs["size_factors"],
+                ) = cast(
+                    "tuple[np.ndarray, np.ndarray]",
+                    deseq2_norm_transform(
+                        self.X, cast(np.ndarray, self.logmeans), _control_mask
+                    ),
+                )
         else:
             raise ValueError("Counts matrix 'X' is None, cannot fit size factors.")
 
         end = time.time()
-        self.var["_normed_means"] = self.layers["normed_counts"].mean(axis=0)
+        self.var["_normed_means"] = (
+            normed_means
+            if normed_means is not None
+            else self.layers["normed_counts"].mean(axis=0)
+        )
 
         if not self.quiet:
             print(f"... done in {end - start:.2f} seconds.\n", file=sys.stderr)
@@ -706,10 +756,34 @@ class DeseqDataSet(ad.AnnData):
         # groups. If there are as many different factor combinations as design factors
         # (intercept included), it is fitted with a linear model, otherwise it is fitted
         # with a GLM (using rough dispersion estimates).
-        if (
+        linear_mu = (
             len(self.obsm["design_matrix"].value_counts())
             == self.obsm["design_matrix"].shape[-1]
-        ):
+        )
+        fused = None
+        if _fits_genewise_in_one_map(self.inference):
+            # DefaultInference fits mu_hat and the dispersions in one map. On any
+            # exception the two calls below run, and raise as they do.
+            start = time.time()
+            alpha_hat = self.var.loc[self.var["non_zero"], "_MoM_dispersions"].values
+            try:
+                fused = cast(DefaultInference, self.inference)._genewise_dispersions(
+                    counts=self.X[:, self.non_zero_idx],
+                    size_factors=size_factors,
+                    design_matrix=design_matrix,
+                    min_mu=self.min_mu,
+                    alpha_hat=alpha_hat,
+                    min_disp=self.min_disp,
+                    max_disp=self.max_disp,
+                    irls_disp=None if linear_mu else alpha_hat,
+                    beta_tol=self.beta_tol,
+                )
+            except Exception:  # noqa: BLE001
+                fused = None
+
+        if fused is not None:
+            mu_hat_, dispersions_, l_bfgs_b_converged_ = fused
+        elif linear_mu:
             mu_hat_ = self.inference.lin_reg_mu(
                 counts=self.X[:, self.non_zero_idx],
                 size_factors=size_factors,
@@ -736,15 +810,16 @@ class DeseqDataSet(ad.AnnData):
 
         if not self.quiet:
             print("Fitting dispersions...", file=sys.stderr)
-        start = time.time()
-        dispersions_, l_bfgs_b_converged_ = self.inference.alpha_mle(
-            counts=self.X[:, self.non_zero_idx],
-            design_matrix=design_matrix,
-            mu=self.layers[mu_param_name][:, self.non_zero_idx],
-            alpha_hat=self.var.loc[self.var["non_zero"], "_MoM_dispersions"].values,
-            min_disp=self.min_disp,
-            max_disp=self.max_disp,
-        )
+        if fused is None:
+            start = time.time()
+            dispersions_, l_bfgs_b_converged_ = self.inference.alpha_mle(
+                counts=self.X[:, self.non_zero_idx],
+                design_matrix=design_matrix,
+                mu=self.layers[mu_param_name][:, self.non_zero_idx],
+                alpha_hat=self.var.loc[self.var["non_zero"], "_MoM_dispersions"].values,
+                min_disp=self.min_disp,
+                max_disp=self.max_disp,
+            )
         end = time.time()
 
         if not self.quiet:
@@ -860,17 +935,31 @@ class DeseqDataSet(ad.AnnData):
         if not self.quiet:
             print("Fitting MAP dispersions...", file=sys.stderr)
         start = time.time()
-        dispersions_, l_bfgs_b_converged_ = self.inference.alpha_mle(
-            counts=self.X[:, self.non_zero_idx],
-            design_matrix=design_matrix,
-            mu=self.layers["_mu_hat"][:, self.non_zero_idx],
-            alpha_hat=self.var.loc[self.var["non_zero"], "fitted_dispersions"].values,
-            min_disp=self.min_disp,
-            max_disp=self.max_disp,
-            prior_disp_var=self.uns["prior_disp_var"].item(),
-            cr_reg=True,
-            prior_reg=True,
-        )
+        fused = None
+        if self._fuse_MAP_LFC and _fits_MAP_and_LFC_in_one_map(self.inference):
+            # DefaultInference fits the LFCs of each block right after its MAP
+            # dispersions, and fit_LFC uses them when the dispersions it reads match.
+            # On any exception the two maps run, and raise as they do.
+            try:
+                fused = self._MAP_and_LFC_map(design_matrix)
+            except Exception:  # noqa: BLE001
+                fused = None
+        if fused is not None:
+            dispersions_, l_bfgs_b_converged_ = fused[:2]
+        else:
+            dispersions_, l_bfgs_b_converged_ = self.inference.alpha_mle(
+                counts=self.X[:, self.non_zero_idx],
+                design_matrix=design_matrix,
+                mu=self.layers["_mu_hat"][:, self.non_zero_idx],
+                alpha_hat=self.var.loc[
+                    self.var["non_zero"], "fitted_dispersions"
+                ].values,
+                min_disp=self.min_disp,
+                max_disp=self.max_disp,
+                prior_disp_var=self.uns["prior_disp_var"].item(),
+                cr_reg=True,
+                prior_reg=True,
+            )
         end = time.time()
 
         if not self.quiet:
@@ -896,6 +985,91 @@ class DeseqDataSet(ad.AnnData):
         if self.low_memory:
             del self.layers["_mu_hat"]
 
+        if fused is not None:
+            self._MAP_LFC_stash = fused[2]
+
+    def _fit_MAP_and_LFC(self) -> None:
+        """Run fit_MAP_dispersions(), then fit_LFC().
+
+        When the inference runs DefaultInference's own fits, the LFCs are fitted in
+        the same map as the MAP dispersions.
+        """
+        self._fuse_MAP_LFC = True
+        try:
+            self.fit_MAP_dispersions()
+        finally:
+            self._fuse_MAP_LFC = False
+        try:
+            self.fit_LFC()
+        finally:
+            self._MAP_LFC_stash = None
+
+    def _MAP_and_LFC_map(
+        self, design_matrix: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, dict] | None:
+        """Fit the MAP dispersions and the LFCs in one map.
+
+        Returns the MAP dispersions and convergence flags, and the irls fits of the
+        dispersions fit_MAP_dispersions will store; None if no gene.
+        """
+        alpha_hat = self.var.loc[self.var["non_zero"], "fitted_dispersions"].values
+        genewise = self.var.loc[self.var["non_zero"], "genewise_dispersions"].values
+        # fit_MAP_dispersions' _outlier_genes, read before the MAP fit; fit_LFC
+        # checks the dispersions it reads against the ones irls was given.
+        with np.errstate(all="ignore"):
+            outlier = np.log(genewise) > np.log(alpha_hat) + 2 * np.sqrt(
+                self.uns["_squared_logres"]
+            )
+        size_factors = self.obs["size_factors"].to_numpy()
+        res = cast(DefaultInference, self.inference)._MAP_dispersions_and_LFC(
+            counts=self.X[:, self.non_zero_idx],
+            size_factors=size_factors,
+            design_matrix=design_matrix,
+            mu=self.layers["_mu_hat"][:, self.non_zero_idx],
+            alpha_hat=alpha_hat,
+            min_disp=self.min_disp,
+            max_disp=self.max_disp,
+            prior_disp_var=self.uns["prior_disp_var"].item(),
+            genewise=genewise,
+            outlier=outlier,
+            min_mu=self.min_mu,
+            beta_tol=self.beta_tol,
+        )
+        if res is None:
+            return None
+        stash = {
+            "inference": self.inference,
+            "X": self.X,
+            "non_zero_idx": self.non_zero_idx,
+            "min_mu": self.min_mu,
+            "beta_tol": self.beta_tol,
+            "size_factors": size_factors,
+            "design_matrix": design_matrix,
+            "disp": res[2],
+            "fits": res[3:],
+        }
+        return res[0], res[1], stash
+
+    def _stashed_LFC(self, stash: dict, design_matrix: np.ndarray) -> tuple | None:
+        """Return the irls fits in ``stash`` when irls would get the same inputs now."""
+        try:
+            disp = self.var.loc[self.var["non_zero"], "dispersions"].values
+            same = (
+                stash["inference"] is self.inference
+                and stash["X"] is self.X
+                and stash["non_zero_idx"] is self.non_zero_idx
+                and stash["min_mu"] is self.min_mu
+                and stash["beta_tol"] is self.beta_tol
+                and _same_bytes(stash["disp"], disp)
+                and _same_bytes(
+                    stash["size_factors"], self.obs["size_factors"].to_numpy()
+                )
+                and _same_bytes(stash["design_matrix"], design_matrix)
+            )
+        except Exception:  # noqa: BLE001
+            return None
+        return stash["fits"] if same else None
+
     def fit_LFC(self) -> None:
         """Fit log fold change (LFC) coefficients.
 
@@ -911,14 +1085,22 @@ class DeseqDataSet(ad.AnnData):
         if not self.quiet:
             print("Fitting LFCs...", file=sys.stderr)
         start = time.time()
-        mle_lfcs_, mu_, hat_diagonals_, converged_ = self.inference.irls(
-            counts=self.X[:, self.non_zero_idx],
-            size_factors=self.obs["size_factors"].to_numpy(),
-            design_matrix=design_matrix,
-            disp=self.var.loc[self.var["non_zero"], "dispersions"].values,
-            min_mu=self.min_mu,
-            beta_tol=self.beta_tol,
-        )
+        stash = self._MAP_LFC_stash
+        fits = None
+        if stash is not None:
+            self._MAP_LFC_stash = None
+            fits = self._stashed_LFC(stash, design_matrix)
+        if fits is not None:
+            mle_lfcs_, mu_, hat_diagonals_, converged_ = fits
+        else:
+            mle_lfcs_, mu_, hat_diagonals_, converged_ = self.inference.irls(
+                counts=self.X[:, self.non_zero_idx],
+                size_factors=self.obs["size_factors"].to_numpy(),
+                design_matrix=design_matrix,
+                disp=self.var.loc[self.var["non_zero"], "dispersions"].values,
+                min_mu=self.min_mu,
+                beta_tol=self.beta_tol,
+            )
         end = time.time()
 
         if not self.quiet:
@@ -958,6 +1140,32 @@ class DeseqDataSet(ad.AnnData):
 
         start = time.time()
         num_vars = self.obsm["design_matrix"].shape[-1]
+
+        n_threads = _thread_count(getattr(self.inference, "n_cpus", 1))
+        cooks = (
+            _cooks_threads(
+                self.X,
+                self.layers["normed_counts"],
+                self.var["non_zero"],
+                self.obsm["design_matrix"],
+                self.obsm["_mu_LFC"],
+                self.obsm["_hat_diagonals"],
+                n_threads,
+            )
+            if n_threads > 1
+            else None
+        )
+        if cooks is not None:
+            if self.low_memory:
+                del self.obsm["_mu_LFC"]
+                del self.obsm["_hat_diagonals"]
+            self.layers["cooks"] = cooks
+            if not self.quiet:
+                print(
+                    f"... done in {time.time() - start:.2f} seconds.\n",
+                    file=sys.stderr,
+                )
+            return
 
         # Calculate dispersion
         dispersions = robust_method_of_moments_disp(
@@ -1105,19 +1313,42 @@ class DeseqDataSet(ad.AnnData):
         if "normed_counts" not in self.layers:
             self.fit_size_factors(fit_type=self.size_factors_fit_type)
 
-        normed_counts = self.layers["normed_counts"][:, self.non_zero_idx]
-        rde = self.inference.fit_rough_dispersions(
-            normed_counts,
-            self.obsm["design_matrix"].values,
-        )
-        mde = self.inference.fit_moments_dispersions(
-            normed_counts, self.obs["size_factors"].to_numpy()
-        )
-        alpha_hat = np.minimum(rde, mde)
+        clipped = None
+        n_threads = _thread_count(getattr(self.inference, "n_cpus", 1))
+        if (
+            n_threads > 1
+            and getattr(self.inference, "fit_rough_dispersions", None)
+            is fit_rough_dispersions
+            and getattr(self.inference, "fit_moments_dispersions", None)
+            is fit_moments_dispersions
+            and "size_factors" in self.obs
+        ):
+            clipped = _mom_dispersions_threads(
+                self.layers["normed_counts"],
+                self.non_zero_idx,
+                self.obsm["design_matrix"].values,
+                self.obs["size_factors"].to_numpy(),
+                self.min_disp,
+                self.max_disp,
+                n_threads,
+            )
+
+        if clipped is None:
+            normed_counts = self.layers["normed_counts"][:, self.non_zero_idx]
+            rde = self.inference.fit_rough_dispersions(
+                normed_counts,
+                self.obsm["design_matrix"].values,
+            )
+            mde = self.inference.fit_moments_dispersions(
+                normed_counts, self.obs["size_factors"].to_numpy()
+            )
+            alpha_hat = np.minimum(rde, mde)
 
         self.var["_MoM_dispersions"] = np.full(self.n_vars, np.nan)
-        self.var.loc[self.var["non_zero"], "_MoM_dispersions"] = np.clip(
-            alpha_hat, self.min_disp, self.max_disp
+        self.var.loc[self.var["non_zero"], "_MoM_dispersions"] = (
+            np.clip(alpha_hat, self.min_disp, self.max_disp)
+            if clipped is None
+            else clipped
         )
 
     def plot_dispersions(
@@ -1177,13 +1408,24 @@ class DeseqDataSet(ad.AnnData):
             index=self.non_zero_genes,
         )
 
-        for gene in self.non_zero_genes:
-            if (
-                np.isinf(covariates.loc[gene]).any()
-                or np.isnan(covariates.loc[gene]).any()
-            ):
-                targets.drop(labels=[gene], inplace=True)
-                covariates.drop(labels=[gene], inplace=True)
+        # With unique gene names, a label drop is a positional one: keep the
+        # values as arrays and rebuild the Series from the kept positions.
+        genes = targets.index
+        by_position = genes.is_unique
+        if by_position:
+            target_values = targets.to_numpy()
+            covariate_values = covariates.to_numpy()
+            kept = np.flatnonzero(np.isfinite(covariate_values))
+            targets = pd.Series(
+                target_values[kept], index=genes[kept], name=targets.name
+            )
+            covariates = pd.Series(
+                covariate_values[kept], index=genes[kept], name=covariates.name
+            )
+        else:
+            bad = covariates.index[~np.isfinite(covariates.to_numpy())].unique()
+            targets.drop(labels=bad, inplace=True)
+            covariates.drop(labels=bad, inplace=True)
 
         # Initialize coefficients
         old_coeffs: np.ndarray | pd.Series = pd.Series([0.1, 0.1])
@@ -1207,6 +1449,25 @@ class DeseqDataSet(ad.AnnData):
                 return
 
             # Filter out genes that are too far away from the curve before refitting
+            if (
+                by_position
+                and isinstance(predictions, np.ndarray)
+                and predictions.shape == kept.shape
+            ):
+                # self.var holds the targets' own values for these genes
+                with np.errstate(all="ignore"):
+                    pred_ratios = target_values[kept] / predictions
+                    far = (pred_ratios < 1e-4) | (pred_ratios >= 15)
+                kept = kept[~far]
+                targets = pd.Series(
+                    target_values[kept], index=genes[kept], name=targets.name
+                )
+                covariates = pd.Series(
+                    covariate_values[kept], index=genes[kept], name=covariates.name
+                )
+                continue
+
+            by_position = False
             pred_ratios = self.var.loc[covariates.index, disp_param_name] / predictions
 
             targets.drop(
@@ -1341,7 +1602,10 @@ class DeseqDataSet(ad.AnnData):
         if self.var["refitted"].sum() == 0:  # if no gene can be refitted, we can skip
             return
 
-        self.counts_to_refit = self.counts_to_refit[:, ~new_all_zeroes].copy()
+        replaced_counts = self.counts_to_refit
+        self.counts_to_refit = replaced_counts[:, ~new_all_zeroes].copy()
+        # Only the cyclic garbage collector frees the replaced AnnData: drop its obsm.
+        replaced_counts.obsm.clear()
         if isinstance(self.new_all_zeroes_genes, pd.MultiIndex):
             raise ValueError
 
@@ -1369,31 +1633,25 @@ class DeseqDataSet(ad.AnnData):
             sub_dds.X / sub_dds.obs["size_factors"].to_numpy()[:, None]
         )
 
-        # Estimate gene-wise dispersions.
-        sub_dds.fit_genewise_dispersions()
+        fused = False
+        if _fits_refit_in_one_map(self.inference):
+            # Every refit step after the method of moments is per gene, so
+            # DefaultInference runs them in one map. On any exception the steps
+            # below run, and raise as they do.
+            try:
+                fused = sub_dds._refit_in_one_map(self)
+            except Exception:  # noqa: BLE001
+                fused = False
 
-        # Compute trend dispersions.
-        # Note: the trend curve is not refitted.
-        sub_dds.uns["disp_function_type"] = self.uns["disp_function_type"]
-        if sub_dds.uns["disp_function_type"] == "parametric":
-            sub_dds.uns["trend_coeffs"] = self.uns["trend_coeffs"]
-        elif sub_dds.uns["disp_function_type"] == "mean":
-            sub_dds.uns["mean_disp"] = self.uns["mean_disp"]
-        sub_dds.var["_normed_means"] = sub_dds.layers["normed_counts"].mean(axis=0)
-        # Reshape in case there's a single gene to refit
-        sub_dds.var["fitted_dispersions"] = sub_dds.disp_function(
-            sub_dds.var["_normed_means"]
-        )
+        if not fused:
+            # Estimate gene-wise dispersions.
+            sub_dds.fit_genewise_dispersions()
 
-        # Estimate MAP dispersions.
-        # Note: the prior variance is not recomputed.
-        sub_dds.uns["_squared_logres"] = self.uns["_squared_logres"]
-        sub_dds.uns["prior_disp_var"] = self.uns["prior_disp_var"]
+            # Compute trend dispersions and set the prior (not refitted).
+            sub_dds._refit_trend_and_prior(self)
 
-        sub_dds.fit_MAP_dispersions()
-
-        # Estimate log-fold changes (in natural log scale)
-        sub_dds.fit_LFC()
+            # Estimate MAP dispersions, then log-fold changes (in natural log scale)
+            sub_dds._fit_MAP_and_LFC()
 
         # Replace values in main object
         self.var.loc[self.var["refitted"], "_normed_means"] = sub_dds.var[
@@ -1410,8 +1668,133 @@ class DeseqDataSet(ad.AnnData):
 
         self.layers["replace_cooks"] = self.layers["cooks"].copy()
 
-        for col in np.where(self.var["refitted"])[0]:
-            self.layers["replace_cooks"][self.obs["replaceable"], col] = 0.0
+        replace_cooks = self.layers["replace_cooks"]
+        replaceable = np.asarray(self.obs["replaceable"])
+        refitted_cols = np.where(self.var["refitted"])[0]
+        if (
+            isinstance(replace_cooks, np.ndarray)
+            and replace_cooks.ndim == 2
+            and replaceable.dtype == bool
+            and replaceable.shape == (replace_cooks.shape[0],)
+        ):
+            replace_cooks[np.ix_(replaceable, refitted_cols)] = 0.0
+        else:
+            for col in refitted_cols:
+                self.layers["replace_cooks"][self.obs["replaceable"], col] = 0.0
+
+    def _refit_trend_and_prior(self, dds: "DeseqDataSet") -> None:
+        """Set this refit's fitted dispersions and prior from the main fit ``dds``."""
+        # Note: the trend curve is not refitted.
+        self.uns["disp_function_type"] = dds.uns["disp_function_type"]
+        if self.uns["disp_function_type"] == "parametric":
+            self.uns["trend_coeffs"] = dds.uns["trend_coeffs"]
+        elif self.uns["disp_function_type"] == "mean":
+            self.uns["mean_disp"] = dds.uns["mean_disp"]
+        self.var["_normed_means"] = self.layers["normed_counts"].mean(axis=0)
+        # Reshape in case there's a single gene to refit
+        self.var["fitted_dispersions"] = self.disp_function(self.var["_normed_means"])
+
+        # Note: the prior variance is not recomputed.
+        self.uns["_squared_logres"] = dds.uns["_squared_logres"]
+        self.uns["prior_disp_var"] = dds.uns["prior_disp_var"]
+
+    def _refit_in_one_map(self, dds: "DeseqDataSet") -> bool:
+        """Run the fits of the refit in one map.
+
+        The map runs this refit's fit_genewise_dispersions, fit_MAP_dispersions and
+        fit_LFC, with the trend and prior of the main fit ``dds``.
+
+        Stores the gene-wise, fitted and final dispersions, the normed means and the
+        LFCs, the fields _refit_without_outliers copies back. False when there is no
+        gene to fit.
+        """
+        self.var["non_zero"] = ~(self.X == 0).all(axis=0)
+        self.non_zero_idx = np.arange(self.n_vars)[self.var["non_zero"]]
+        self.non_zero_genes = self.var_names[self.var["non_zero"]]
+        if isinstance(self.non_zero_genes, pd.MultiIndex):
+            raise ValueError("non_zero_genes should not be a MultiIndex")
+
+        self._fit_MoM_dispersions()
+        design_matrix = self.obsm["design_matrix"].values
+        size_factors = self.obs["size_factors"].to_numpy()
+        linear_mu = (
+            len(self.obsm["design_matrix"].value_counts())
+            == self.obsm["design_matrix"].shape[-1]
+        )
+        alpha_hat = self.var.loc[self.var["non_zero"], "_MoM_dispersions"].values
+        self._refit_trend_and_prior(dds)
+        with np.errstate(all="ignore"):
+            outlier_offset = 2 * np.sqrt(self.uns["_squared_logres"])
+
+        start = time.time()
+        res = cast(DefaultInference, self.inference)._refit_dispersions_and_LFC(
+            counts=self.X[:, self.non_zero_idx],
+            size_factors=size_factors,
+            design_matrix=design_matrix,
+            min_mu=self.min_mu,
+            alpha_hat=alpha_hat,
+            min_disp=self.min_disp,
+            max_disp=self.max_disp,
+            irls_disp=None if linear_mu else alpha_hat,
+            beta_tol=self.beta_tol,
+            fitted=self.var.loc[self.var["non_zero"], "fitted_dispersions"].values,
+            prior_disp_var=self.uns["prior_disp_var"].item(),
+            outlier_offset=outlier_offset,
+        )
+        if res is None:
+            return False
+        genewise_, dispersions_, irls_disp, mle_lfcs_ = res
+        end = time.time()
+
+        if not self.quiet:
+            print("Fitting dispersions...", file=sys.stderr)
+            print(f"... done in {end - start:.2f} seconds.\n", file=sys.stderr)
+
+        self.var["genewise_dispersions"] = np.full(self.n_vars, np.nan)
+        self.var.loc[self.var["non_zero"], "genewise_dispersions"] = np.clip(
+            genewise_, self.min_disp, self.max_disp
+        )
+
+        if not self.quiet:
+            print("Fitting MAP dispersions...", file=sys.stderr)
+            print("... done in 0.00 seconds.\n", file=sys.stderr)
+
+        self.var["MAP_dispersions"] = np.full(self.n_vars, np.nan)
+        self.var.loc[self.var["non_zero"], "MAP_dispersions"] = np.clip(
+            dispersions_, self.min_disp, self.max_disp
+        )
+        self.var["dispersions"] = self.var["MAP_dispersions"].copy()
+        self.var["_outlier_genes"] = np.log(self.var["genewise_dispersions"]) > np.log(
+            self.var["fitted_dispersions"]
+        ) + 2 * np.sqrt(self.uns["_squared_logres"])
+        self.var.loc[self.var["_outlier_genes"], "dispersions"] = self.var.loc[
+            self.var["_outlier_genes"], "genewise_dispersions"
+        ]
+
+        if not _same_bytes(
+            irls_disp, self.var.loc[self.var["non_zero"], "dispersions"].values
+        ):
+            # irls was given other dispersions than fit_LFC reads.
+            self.fit_LFC()
+            return True
+
+        if not self.quiet:
+            print("Fitting LFCs...", file=sys.stderr)
+            print("... done in 0.00 seconds.\n", file=sys.stderr)
+
+        self.varm["LFC"] = pd.DataFrame(
+            np.nan,
+            index=self.var_names,
+            columns=self.obsm["design_matrix"].columns,
+        )
+        self.varm["LFC"].update(
+            pd.DataFrame(
+                mle_lfcs_,
+                index=self.non_zero_genes,
+                columns=self.obsm["design_matrix"].columns,
+            )
+        )
+        return True
 
     def _fit_iterate_size_factors(self, niter: int = 10, quant: float = 0.95) -> None:
         """
@@ -1517,3 +1900,232 @@ class DeseqDataSet(ad.AnnData):
                 UserWarning,
                 stacklevel=2,
             )
+
+
+def _mom_dispersions_threads(
+    normed_counts,
+    non_zero_idx,
+    design_matrix,
+    size_factors,
+    min_disp,
+    max_disp,
+    n_threads,
+) -> np.ndarray | None:
+    """Compute the method-of-moments dispersions on threads.
+
+    Returns :meth:`DeseqDataSet._fit_MoM_dispersions`' clipped minimum of
+    :func:`fit_rough_dispersions` and :func:`fit_moments_dispersions` on the
+    non-zero genes, every pass but the regression's lstsq call and prediction on
+    column chunks on ``n_threads`` threads.
+
+    Returns ``None`` when the serial code must run: inputs it does not take, a
+    non-finite or all-zero column, a warning, a floating-point error or an
+    exception.
+    """
+    X = design_matrix
+    if not (
+        isinstance(normed_counts, np.ndarray)
+        and normed_counts.ndim == 2
+        and normed_counts.dtype == np.float64
+        and normed_counts.size >= _MIN_THREADED_SIZE
+        and isinstance(non_zero_idx, np.ndarray)
+        and non_zero_idx.ndim == 1
+        and non_zero_idx.dtype.kind in "iu"
+        and len(non_zero_idx) > _CHUNK_COLS
+        and isinstance(X, np.ndarray)
+        and X.dtype == np.float64
+        and X.ndim == 2
+        and X.shape[0] == normed_counts.shape[0] > X.shape[1] > 0
+        and isinstance(size_factors, np.ndarray)
+        and size_factors.dtype == np.float64
+        and size_factors.shape == X.shape[:1]
+        and np.ndim(min_disp) == 0
+        and np.ndim(max_disp) == 0
+    ):
+        return None
+    num_samples, num_vars = X.shape
+    n_genes = len(non_zero_idx)
+
+    try:
+        if not (
+            np.isfinite(X).all()
+            and non_zero_idx.min() >= 0
+            and non_zero_idx.max() < normed_counts.shape[1]
+        ):
+            return None
+        # The lstsq call LinearRegression(fit_intercept=False).fit makes, without
+        # its input validation (glm.fit_lin_mu does the same).
+        cond = _linear_regression_cond(num_samples, num_vars)
+        if cond is None:
+            return None
+        flag = _FPFlag()
+        with np.errstate(all="call", call=flag):
+            s_mean_inv = (1 / size_factors).mean(axis=0)
+        if flag.raised:
+            return None
+
+        # normed_counts[:, non_zero_idx] is Fortran-ordered whatever the order of
+        # normed_counts, so its column chunks reduce over samples as it does.
+        rows = np.empty((n_genes, num_samples))
+        normed = rows.T
+        source = normed_counts.T
+        mde = np.empty(n_genes)
+        alpha_hat = np.empty(n_genes)
+        bounds = _chunk_bounds(n_genes, _balanced_width(n_genes, n_threads, _CHUNK_COLS))
+
+        def moments(start, stop):
+            np.take(
+                source,
+                non_zero_idx[start:stop],
+                axis=0,
+                out=rows[start:stop],
+                mode="clip",
+            )
+            block = normed[:, start:stop]
+            if not np.isfinite(block).all() or (block == 0).all(axis=0).any():
+                return True
+            flag = _FPFlag()
+            with np.errstate(all="call", call=flag):
+                mu = block.mean(0)
+                sigma = block.var(0, ddof=1)
+                mde[start:stop] = np.nan_to_num((sigma - s_mean_inv * mu) / mu**2)
+            return flag.raised
+
+        def rough(start, stop):
+            block = normed[:, start:stop]
+            flag = _FPFlag()
+            with np.errstate(all="call", call=flag):
+                # y_hat is C-ordered as LinearRegression.predict's is, so the sum
+                # over samples runs row by row as it does on the whole matrix.
+                y_hat = np.maximum(y_hat_all[:, start:stop], 1)
+                alpha_rde = (
+                    ((block - y_hat) ** 2 - y_hat)
+                    / ((num_samples - num_vars) * y_hat**2)
+                ).sum(axis=0)
+                rde = np.maximum(alpha_rde, 0)
+                np.clip(
+                    np.minimum(rde, mde[start:stop]),
+                    min_disp,
+                    max_disp,
+                    out=alpha_hat[start:stop],
+                )
+            return flag.raised
+
+        with _thread_pool(n_threads) as pool:
+            if any(_map_threads(moments, bounds, pool)):
+                return None
+            flag = _FPFlag()
+            with (
+                warnings.catch_warnings(record=True) as caught,
+                np.errstate(all="call", call=flag),
+            ):
+                warnings.simplefilter("always")
+                coef = lstsq(X, normed, cond=cond, check_finite=False)[0]
+            if caught or flag.raised:
+                return None
+            # One product, as in predict: per-chunk BLAS products round differently.
+            with np.errstate(all="call", call=flag):
+                y_hat_all = X @ coef + 0.0
+            if flag.raised:
+                return None
+            if any(_map_threads(rough, bounds, pool)):
+                return None
+    except Exception:  # noqa: BLE001
+        return None
+    return alpha_hat
+
+
+def _same_bytes(a: Any, b: Any) -> bool:
+    """Whether a and b are ndarrays of one dtype and shape holding the same bytes."""
+    return (
+        isinstance(a, np.ndarray)
+        and isinstance(b, np.ndarray)
+        and a.dtype == b.dtype
+        and a.shape == b.shape
+        and np.ascontiguousarray(a).tobytes() == np.ascontiguousarray(b).tobytes()
+    )
+
+
+def _cooks_threads(
+    counts, normed_counts, non_zero, design_matrix, mu, hat_diagonals, n_threads
+) -> np.ndarray | None:
+    """Compute :meth:`DeseqDataSet.calculate_cooks`' Cook's distances on threads.
+
+    Its dispersions, residuals and leverages are computed on column chunks on
+    ``n_threads`` threads.
+
+    Returns ``None``, having changed nothing, when the serial code must run:
+    inputs it does not take, a floating-point error or an exception in any chunk.
+    """
+    non_zero = non_zero.to_numpy() if isinstance(non_zero, pd.Series) else non_zero
+    if not (
+        isinstance(counts, np.ndarray)
+        and counts.ndim == 2
+        and counts.dtype in (np.dtype(np.int64), np.dtype(np.int32))
+        and counts.size >= _MIN_THREADED_SIZE
+        and isinstance(normed_counts, np.ndarray)
+        and normed_counts.dtype == np.float64
+        and normed_counts.shape == counts.shape
+        and isinstance(non_zero, np.ndarray)
+        and non_zero.dtype == bool
+        and non_zero.shape == (counts.shape[1],)
+        and isinstance(design_matrix, pd.DataFrame)
+        and design_matrix.shape[0] == counts.shape[0]
+    ):
+        return None
+    offsets = np.zeros(counts.shape[1] + 1, dtype=np.intp)
+    np.cumsum(non_zero, out=offsets[1:])
+    shape = (counts.shape[0], offsets[-1])
+    if not all(
+        isinstance(a, np.ndarray) and a.dtype == np.float64 and a.shape == shape
+        for a in (mu, hat_diagonals)
+    ):
+        return None
+    if offsets[-1] <= _CHUNK_COLS:
+        return None
+    num_vars = design_matrix.shape[-1]
+
+    try:
+        plan = _robust_moments_plan(design_matrix)
+        cooks = np.empty(counts.shape)
+
+        def chunk(start, stop):
+            flag = _FPFlag()
+            keep = non_zero[start:stop]
+            lo, hi = offsets[start], offsets[stop]
+            out = cooks[:, start:stop]
+            out.fill(np.nan)
+            with np.errstate(all="call", call=flag):
+                dispersions = _robust_moments_disp_columns(
+                    normed_counts[:, start:stop][:, keep], plan
+                )
+                mu_block = mu[:, lo:hi]
+                hat = hat_diagonals[:, lo:hi]
+                squared_pearson_res = counts[:, start:stop][:, keep] - mu_block
+                squared_pearson_res **= 2
+                V = mu_block**2
+                V *= dispersions[None, :]
+                V += mu_block
+                squared_pearson_res /= V
+                squared_pearson_res /= num_vars
+                diag_mul = 1 - hat
+                diag_mul **= 2
+                diag_mul = hat / diag_mul
+                squared_pearson_res *= diag_mul
+            out[:, keep] = squared_pearson_res
+            return flag.raised
+
+        # Chunks hold about _CHUNK_COLS non-zero genes each (two or more, see
+        # _chunk_bounds), plus the all-zero genes up to the next chunk's first
+        # non-zero gene.
+        positions = np.flatnonzero(non_zero)
+        width = _balanced_width(len(positions), n_threads, _CHUNK_COLS)
+        cuts = [start for start, _ in _chunk_bounds(len(positions), width)]
+        starts = [0] + [int(positions[cut]) for cut in cuts[1:]]
+        bounds = list(zip(starts, starts[1:] + [counts.shape[1]], strict=True))
+        with _thread_pool(n_threads) as pool:
+            if any(_map_threads(chunk, bounds, pool)):
+                return None
+    except Exception:  # noqa: BLE001
+        return None
+    return cooks

@@ -16,6 +16,50 @@ from pydeseq2.plotting import make_MA_plot
 from pydeseq2.stats import lowess
 
 
+def _bh_sorted(ps: np.ndarray) -> np.ndarray:
+    """Benjamini-Hochberg adjust ascending float64 p-values in [0, 1].
+
+    The arithmetic scipy's ``false_discovery_control(method="bh")`` applies after
+    its sort, so each position gets scipy's value. Tied p-values share one
+    adjusted value, so the order of tied genes does not matter.
+    """
+    m = ps.shape[0]
+    if m <= 1:
+        return ps
+    ps = ps * (m / np.arange(1, m + 1, dtype=ps.dtype))
+    np.minimum.accumulate(ps[::-1], out=ps[::-1])
+    return np.clip(ps, 0.0, 1.0)
+
+
+def _sorted_tested_p_values(p_values, base_mean, var_names):
+    """Return the tested genes' positions, p-values and base means, sorted by p-value.
+
+    Returns None when independent filtering must call scipy per cutoff: when the
+    p-values or base means are not float64 Series indexed like ``var_names``, or a
+    p-value lies outside [0, 1], where scipy raises.
+    """
+    if not (
+        isinstance(p_values, pd.Series)
+        and isinstance(base_mean, pd.Series)
+        and p_values.dtype == np.float64
+        and base_mean.dtype == np.float64
+        and p_values.index.equals(var_names)
+        and base_mean.index.equals(var_names)
+    ):
+        return None
+    p = p_values.to_numpy()
+    tested = ~np.isnan(p)
+    p = p[tested]
+    if p.size and not (p.min() >= 0 and p.max() <= 1):
+        return None
+    order = np.argsort(p)
+    return (
+        np.flatnonzero(tested)[order],
+        p[order],
+        base_mean.to_numpy()[tested][order],
+    )
+
+
 class DeseqStats:
     """PyDESeq2 statistical tests for differential expression.
 
@@ -376,12 +420,19 @@ class DeseqStats:
             print(f"... done in {end - start:.2f} seconds.\n", file=sys.stderr)
 
         new_lfc_values = np.array(lfcs)[:, coeff_idx]
-        new_se_values = np.array(
-            [
-                np.sqrt(np.abs(inv_hess[coeff_idx, coeff_idx]))
-                for inv_hess in inv_hessians
-            ]
-        )
+        if (
+            isinstance(inv_hessians, np.ndarray)
+            and inv_hessians.ndim == 3
+            and inv_hessians.dtype == np.float64
+        ):
+            new_se_values = np.sqrt(np.abs(inv_hessians[:, coeff_idx, coeff_idx]))
+        else:
+            new_se_values = np.array(
+                [
+                    np.sqrt(np.abs(inv_hess[coeff_idx, coeff_idx]))
+                    for inv_hess in inv_hessians
+                ]
+            )
         nan_mask = ~np.isfinite(new_lfc_values) | ~np.isfinite(new_se_values)
 
         if nan_mask.any():
@@ -392,16 +443,32 @@ class DeseqStats:
                 stacklevel=2,
             )
 
-        # Only update genes with valid (non-NaN) shrinkage results
-        valid_genes = self.dds.non_zero_genes[~nan_mask]
-        self.LFC.loc[valid_genes, coeff] = new_lfc_values[~nan_mask]
-        self.SE.loc[valid_genes] = new_se_values[~nan_mask]
+        # Only update genes with valid (non-NaN) shrinkage results. With unique gene
+        # names and LFC/SE indexed by them, positions select the same rows as labels.
+        var_names = self.dds.var_names
+        by_position = (
+            isinstance(coeff_idx, int)
+            and var_names.is_unique
+            and self.LFC.index.equals(var_names)
+            and self.SE.index.equals(var_names)
+        )
+        if by_position:
+            valid_idx = self.dds.non_zero_idx[~nan_mask]
+            self.LFC.iloc[valid_idx, coeff_idx] = new_lfc_values[~nan_mask]
+            self.SE.iloc[valid_idx] = new_se_values[~nan_mask]
+        else:
+            valid_genes = self.dds.non_zero_genes[~nan_mask]
+            self.LFC.loc[valid_genes, coeff] = new_lfc_values[~nan_mask]
+            self.SE.loc[valid_genes] = new_se_values[~nan_mask]
 
         self._LFC_shrink_converged = pd.Series(
-            pd.array([pd.NA] * len(self.dds.var_names), dtype="boolean"),
-            index=self.dds.var_names,
+            pd.array([pd.NA] * len(var_names), dtype="boolean"),
+            index=var_names,
         )
-        self._LFC_shrink_converged.loc[self.dds.non_zero_genes] = l_bfgs_b_converged_
+        if by_position:
+            self._LFC_shrink_converged.iloc[self.dds.non_zero_idx] = l_bfgs_b_converged_
+        else:
+            self._LFC_shrink_converged.loc[self.dds.non_zero_genes] = l_bfgs_b_converged_
 
         # Set a flag to indicate that LFCs were shrunk
         self.shrunk_LFCs = True
@@ -466,17 +533,31 @@ class DeseqStats:
 
         theta = np.linspace(lower_quantile, upper_quantile, 50)
         cutoffs = np.quantile(self.base_mean, theta)
+        columns = np.arange(len(theta))
 
-        result = pd.DataFrame(
-            np.nan, index=self.dds.var_names, columns=np.arange(len(theta))
+        sorted_tested = _sorted_tested_p_values(
+            self.p_values, self.base_mean, self.dds.var_names
         )
+        if sorted_tested is not None:
+            positions, p_sorted, base_mean_sorted = sorted_tested
+            num_rej = np.array(
+                [
+                    np.count_nonzero(
+                        _bh_sorted(p_sorted[base_mean_sorted >= cutoff]) < self.alpha
+                    )
+                    for cutoff in cutoffs
+                ],
+                dtype=int,
+            )
+        else:
+            result = pd.DataFrame(np.nan, index=self.dds.var_names, columns=columns)
 
-        for i, cutoff in enumerate(cutoffs):
-            use = (self.base_mean >= cutoff) & (~self.p_values.isna())
-            U2 = self.p_values[use]
-            if not U2.empty:
-                result.loc[use, i] = false_discovery_control(U2, method="bh")
-        num_rej = (result < self.alpha).sum(axis=0).to_numpy().astype(int)
+            for i, cutoff in enumerate(cutoffs):
+                use = (self.base_mean >= cutoff) & (~self.p_values.isna())
+                U2 = self.p_values[use]
+                if not U2.empty:
+                    result.loc[use, i] = false_discovery_control(U2, method="bh")
+            num_rej = (result < self.alpha).sum(axis=0).to_numpy().astype(int)
         lowess_res = lowess(theta, num_rej, frac=1 / 5)
 
         if num_rej.max() <= 10:
@@ -489,7 +570,13 @@ class DeseqStats:
             else:
                 j = 0
 
-        self.padj = result.loc[:, j]
+        if sorted_tested is not None:
+            use = base_mean_sorted >= cutoffs[j]
+            padj = np.full(len(self.dds.var_names), np.nan)
+            padj[positions[use]] = _bh_sorted(p_sorted[use])
+            self.padj = pd.Series(padj, index=self.dds.var_names, name=columns[j])
+        else:
+            self.padj = result.loc[:, j]
 
     def _p_value_adjustment(self) -> None:
         """Compute adjusted p-values using the Benjamini-Hochberg method.
