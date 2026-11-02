@@ -61,18 +61,16 @@ PyDESeq2 is part of the scverse® project ([website](https://scverse.org), [gove
 If you like scverse® and want to support our mission, please consider making a tax-deductible [donation](https://numfocus.org/donate-to-scverse) to help the project pay for developer time, professional services, travel, workshops, and a variety of other needs.
 
 ```{toctree}
-:caption: General
+:caption: Getting started
 :hidden:
 :maxdepth: 1
 
 installation
-api
-contributing
-references
+Quickstart <auto_examples/plot_minimal_pydeseq2_pipeline>
 ```
 
 ```{toctree}
-:caption: Gallery
+:caption: Guides
 :hidden:
 :maxdepth: 2
 
@@ -80,12 +78,22 @@ auto_examples/index
 ```
 
 ```{toctree}
-:caption: About
+:caption: Reference
 :hidden:
 :maxdepth: 1
 
+api
 about/background
+```
+
+```{toctree}
+:caption: Project
+:hidden:
+:maxdepth: 1
+
+contributing
 about/cite
+references
 GitHub <https://github.com/scverse/PyDESeq2>
 Discourse <https://discourse.scverse.org/>
 ```

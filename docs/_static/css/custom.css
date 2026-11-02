@@ -1,78 +1,9 @@
-/* ============================================================================
-   PyDESeq2 documentation theme.
-   The palette is taken from the logo: green #2cb446 and dark green #078013.
-   The bright green is not readable as text on white, so a darker "ink" variant carries text and links while the saturated original stays decorative.
-   The theme (scanpydoc on top of sphinx-book-theme / pydata-sphinx-theme) is steered through its CSS custom properties.
-   ========================================================================= */
-
-/* -- Brand palette --------------------------------------------------------- */
-:root {
-    --pydeseq2-green: #2cb446;
-    --pydeseq2-green-ink: #078013;
-    --pydeseq2-green-light: #6fd685;
-    --pydeseq2-green-tint: #eaf8ed;
-    --pydeseq2-forest: #05500d;
-    --pydeseq2-slate: #2f3a33;
-    --pydeseq2-cream: #f4f8f5;
-}
-
-/* -- Light mode ------------------------------------------------------------ */
-html[data-theme="light"] {
-    --pst-color-primary: var(--pydeseq2-green-ink);
-    --pst-color-primary-highlight: var(--pydeseq2-forest);
-    --pst-color-secondary: var(--pydeseq2-slate);
-    --pst-color-secondary-highlight: var(--pydeseq2-forest);
-    --pst-color-link: var(--pydeseq2-green-ink);
-    --pst-color-link-hover: var(--pydeseq2-forest);
-    --pst-color-inline-code: var(--pydeseq2-green-ink);
-    --pst-color-accent: var(--pydeseq2-green);
-    --pst-color-target: var(--pydeseq2-green-tint);
-
-    --sd-color-primary: var(--pydeseq2-green-ink);
-    --sd-color-primary-highlight: var(--pydeseq2-forest);
-    --sd-color-shadow: rgb(47 58 51 / 18%);
-}
-
-/* -- Dark mode ------------------------------------------------------------- */
-html[data-theme="dark"] {
-    /* The saturated logo green only has enough contrast on a dark background. */
-    --pst-color-primary: var(--pydeseq2-green);
-    --pst-color-primary-highlight: var(--pydeseq2-cream);
-    --pst-color-secondary: var(--pydeseq2-green-light);
-    --pst-color-secondary-highlight: var(--pydeseq2-cream);
-    --pst-color-link: var(--pydeseq2-green-light);
-    --pst-color-link-hover: var(--pydeseq2-green);
-    --pst-color-inline-code: var(--pydeseq2-green-light);
-    --pst-color-accent: var(--pydeseq2-green);
-    --pst-color-target: rgb(44 180 70 / 28%);
-
-    --sd-color-primary: var(--pydeseq2-green-light);
-    --sd-color-primary-highlight: var(--pydeseq2-green);
-    --sd-color-shadow: rgb(0 0 0 / 50%);
-}
-
 /* -- Logo ------------------------------------------------------------------ */
 .bd-sidebar-primary .navbar-brand img,
 .bd-sidebar-primary .navbar-brand .logo__image {
     max-height: 5rem;
     width: auto;
     margin: 0 auto;
-}
-
-.bd-header .navbar-brand img,
-.bd-header .navbar-brand .logo__image {
-    max-height: 2.4rem;
-    width: auto;
-}
-
-/* -- Sidebar section captions ---------------------------------------------- */
-.bd-sidebar-primary .caption-text,
-nav.bd-links p.caption .caption-text {
-    color: var(--pst-color-primary);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    font-size: 0.78rem;
 }
 
 /* Keep the deeply nested API entries compact. */
@@ -82,38 +13,6 @@ li.toctree-l3 {
 
 li.toctree-l4 {
     font-size: 75% !important;
-}
-
-/* -- Landing page cards (sphinx-design) ------------------------------------ */
-.sd-card {
-    border: 1px solid var(--pst-color-border);
-    border-radius: 0.6rem;
-    transition:
-        transform 0.18s ease,
-        box-shadow 0.18s ease,
-        border-color 0.18s ease;
-}
-
-.sd-card:hover {
-    transform: translateY(-3px);
-    border-color: var(--pst-color-primary);
-    box-shadow: 0 0.5rem 1.25rem var(--sd-color-shadow);
-}
-
-.sd-card .sd-card-title {
-    color: var(--pst-color-secondary);
-    font-weight: 600;
-}
-
-.sd-card .sd-card-title .sd-octicon {
-    color: var(--pst-color-primary);
-    margin-right: 0.4rem;
-    vertical-align: -0.12em;
-}
-
-.sd-card a.sd-card-title,
-.sd-card a.sd-card-title:hover {
-    text-decoration: none;
 }
 
 /* -- Reduce the font size in data frames ----------------------------------- */
