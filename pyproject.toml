@@ -56,7 +56,7 @@ doc = [
   "ipython",
   "jupyter",
   "numpydoc",
-  "scverse-doc[full]>=0.3",
+  "scverse-doc[full]>=0.4",
   "sphinx>=8",
   "sphinx-autobuild",
   "sphinx-autodoc-typehints",
