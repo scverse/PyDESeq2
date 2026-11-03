@@ -1555,8 +1555,8 @@ class DeseqDataSet(ad.AnnData):
                 np.isinf(covariates.loc[gene]).any()
                 or np.isnan(covariates.loc[gene]).any()
             ):
-                targets.drop(labels=[gene], inplace=True)
-                covariates.drop(labels=[gene], inplace=True)
+                targets = targets.drop(labels=[gene])
+                covariates = covariates.drop(labels=[gene])
 
         # Initialize coefficients
         old_coeffs: np.ndarray | pd.Series = pd.Series([0.1, 0.1])
@@ -1582,13 +1582,11 @@ class DeseqDataSet(ad.AnnData):
             # Filter out genes that are too far away from the curve before refitting
             pred_ratios = self.var.loc[covariates.index, disp_param_name] / predictions
 
-            targets.drop(
+            targets = targets.drop(
                 targets[(pred_ratios < 1e-4) | (pred_ratios >= 15)].index,
-                inplace=True,
             )
-            covariates.drop(
+            covariates = covariates.drop(
                 covariates[(pred_ratios < 1e-4) | (pred_ratios >= 15)].index,
-                inplace=True,
             )
 
         if vst:
