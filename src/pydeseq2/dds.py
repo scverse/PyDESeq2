@@ -1438,15 +1438,9 @@ class DeseqDataSet(ad.AnnData):
         )
 
         # Fit size factors using MLE
-        def objective(p):
+        def objective(p, counts, mu, alpha):
             sf = np.exp(p - np.mean(p))
-            nll = nb_nll(
-                counts=self[:, self.non_zero_genes].X,
-                mu=self[:, self.non_zero_genes].layers["_mu_hat"]
-                / self.obs["size_factors"].values[:, None]
-                * sf[:, None],
-                alpha=self.var.loc[self.non_zero_genes, "dispersions"].values,
-            )
+            nll = nb_nll(counts=counts, mu=mu * sf[:, None], alpha=alpha)
             # Take out the lowest likelihoods (highest neg) from the sum
             return np.sum(nll[nll < np.quantile(nll, quant)])
 
@@ -1478,8 +1472,18 @@ class DeseqDataSet(ad.AnnData):
             self.fit_MAP_dispersions()
             old_sf = self.obs["size_factors"].copy()
 
+            # The optimizer evaluates the objective many times, so extract its inputs
+            # once instead of slicing the AnnData object in every evaluation.
+            counts = self.X[:, self.non_zero_idx]
+            mu = (
+                self.layers["_mu_hat"][:, self.non_zero_idx] / old_sf.to_numpy()[:, None]
+            )
+            alpha = self.var["dispersions"].to_numpy()[self.non_zero_idx]
+
             # Fit size factors using MLE
-            res = minimize(objective, np.log(old_sf), method="Powell")
+            res = minimize(
+                objective, np.log(old_sf), args=(counts, mu, alpha), method="Powell"
+            )
 
             self.obs["size_factors"] = np.exp(res.x - np.mean(res.x))
 
