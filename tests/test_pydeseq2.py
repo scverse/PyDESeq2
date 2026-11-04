@@ -893,6 +893,22 @@ def test_vst_transform_no_fit(train_counts, train_metadata, test_counts):
         train_dds.vst_transform(test_counts.to_numpy())
 
 
+def test_write_h5ad(counts_df, metadata, tmp_path):
+    """Test that a fitted DeseqDataSet can be written to and read from h5ad."""
+    dds = DeseqDataSet(counts=counts_df, metadata=metadata, design="~condition")
+    dds.deseq2()
+    dds.vst(use_design=False)
+
+    path = tmp_path / "dds.h5ad"
+    dds.write_h5ad(path)
+    adata = ad.read_h5ad(path)
+
+    for key in ["trend_coeffs", "vst_trend_coeffs"]:
+        assert adata.uns[key].keys() == {"a0", "a1"}
+        for coeff in ["a0", "a1"]:
+            assert adata.uns[key][coeff] == pytest.approx(dds.uns[key][coeff])
+
+
 def assert_res_almost_equal(py_res, r_res, tol=0.02):
     # check that the same p-values are NaN
     assert (py_res.pvalue.isna() == r_res.pvalue.isna()).all()
