@@ -1,4 +1,5 @@
 import warnings
+from pathlib import Path
 
 import anndata as ad
 import numpy as np
@@ -65,70 +66,29 @@ def varying_transcript_lengths(counts):
     return pd.DataFrame(lengths, index=counts.index, columns=counts.columns)
 
 
-def test_transcript_length_normalization_matches_deseq2_formula():
-    counts, metadata, transcript_lengths = small_tximport_data()
+@pytest.mark.parametrize("method", ["ratio", "poscounts"])
+def test_transcript_length_normalization_matches_deseq2_reference(method):
+    counts = load_example_data("raw_counts", "synthetic", debug=False)
+    metadata = load_example_data("metadata", "synthetic", debug=False)
     dds = DeseqDataSet(
         counts=counts,
         metadata=metadata,
-        transcript_lengths=transcript_lengths,
-        design="~condition",
+        transcript_lengths=varying_transcript_lengths(counts),
         quiet=True,
     )
-    dds.fit_size_factors()
+    dds.fit_size_factors(method)
 
-    rounded_counts = np.rint(counts.to_numpy())
-    lengths = transcript_lengths.to_numpy()
-    length_factors = lengths / np.exp(np.mean(np.log(lengths), axis=0))
-    adjusted_counts = rounded_counts / length_factors
-    logmeans = np.mean(np.log(adjusted_counts), axis=0)
-    size_factors = np.exp(np.median(np.log(adjusted_counts) - logmeans, axis=1))
-    size_factors /= np.exp(np.mean(np.log(size_factors)))
-    expected_factors = length_factors * size_factors[:, None]
-    expected_factors /= np.exp(np.mean(np.log(expected_factors), axis=0))
-
-    np.testing.assert_array_equal(dds.X, rounded_counts)
-    np.testing.assert_allclose(dds.layers["avg_tx_length"], lengths)
-    np.testing.assert_allclose(dds.obs["size_factors"], size_factors)
-    np.testing.assert_allclose(dds.layers["normalization_factors"], expected_factors)
-    np.testing.assert_allclose(
-        dds.layers["normed_counts"], rounded_counts / expected_factors
-    )
-    np.testing.assert_allclose(
-        np.exp(np.mean(np.log(dds.layers["normalization_factors"]), axis=0)),
-        np.ones(dds.n_vars),
-    )
-
-
-def test_poscounts_transcript_length_normalization_matches_deseq2_formula():
-    counts, metadata, transcript_lengths = small_tximport_data()
-    for idx in range(3):
-        counts.iat[idx, idx] = 0
-    dds = DeseqDataSet(
-        counts=counts,
-        metadata=metadata,
-        transcript_lengths=transcript_lengths,
-        quiet=True,
-    )
-    dds.fit_size_factors("poscounts")
-
-    rounded_counts = np.rint(counts.to_numpy())
-    lengths = transcript_lengths.to_numpy()
-    length_factors = lengths / np.exp(np.mean(np.log(lengths), axis=0))
-    adjusted_counts = rounded_counts / length_factors
-    log_counts = np.zeros_like(rounded_counts)
-    np.log(rounded_counts, out=log_counts, where=rounded_counts != 0)
-    logmeans = log_counts.mean(axis=0)
-    size_factors = np.empty(dds.n_obs)
-    for sample_idx in range(dds.n_obs):
-        positive = adjusted_counts[sample_idx] > 0
-        size_factors[sample_idx] = np.exp(
-            np.median(np.log(adjusted_counts[sample_idx, positive]) - logmeans[positive])
+    directory = Path(__file__).parent / "data" / "transcript_length"
+    for suffix, layer in (
+        ("factors", "normalization_factors"),
+        ("counts", "normed_counts"),
+    ):
+        expected = pd.read_csv(directory / f"r_{method}_{suffix}.csv", index_col=0).T
+        pd.testing.assert_index_equal(expected.index, dds.obs_names, check_names=False)
+        pd.testing.assert_index_equal(expected.columns, dds.var_names, check_names=False)
+        np.testing.assert_allclose(
+            dds.layers[layer], expected.to_numpy(), rtol=1e-8, atol=1e-8
         )
-    size_factors /= np.exp(np.mean(np.log(size_factors)))
-    expected_factors = length_factors * size_factors[:, None]
-    expected_factors /= np.exp(np.mean(np.log(expected_factors), axis=0))
-
-    np.testing.assert_allclose(dds.layers["normalization_factors"], expected_factors)
 
 
 @pytest.mark.parametrize(
