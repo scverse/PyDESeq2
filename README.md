@@ -128,18 +128,19 @@ txi = tximport(
     output_type="anndata",
 )
 txi.obs = metadata.loc[sample_names].copy()
-dds = DeseqDataSet(adata=txi, design="~condition")
+dds = DeseqDataSet(adata=txi, transcript_lengths=txi.obsm["length"], design="~condition")
 dds.deseq2()
 ```
 
-Use only unscaled estimated counts (`counts_from_abundance=None`); the file list and
-metadata rows must use the same sample order. For backed AnnData, call
-`adata.to_memory()` first and ensure sufficient memory. Length-source precedence is
-deterministic: explicit `transcript_lengths`, `adata.layers["avg_tx_length"]`, then
-compatible pytximport fields; PyDESeq2 copies `adata.obsm["length"]` into the canonical
-layer. Because that matrix has no gene labels and AnnData does not align its second
-`obsm` dimension with `adata.var`, pass it before gene-axis subsetting/reordering or
-apply the same selection and order to `adata.obsm["length"]`.
+Length correction is opt-in: stored lengths alone do not activate it. Use only
+unscaled estimated counts (`counts_from_abundance=None`) with `transcript_lengths`;
+scaled counts must not receive a second length correction. Without explicit lengths,
+the usual integer-count requirements apply. The file list and metadata rows must use
+the same sample order. For backed AnnData, call `adata.to_memory()` first.
+AnnData does not align the gene dimension of `obsm["length"]` when subsetting genes;
+apply the same selection and order to the lengths before passing them explicitly.
+Constructing a new dataset from length-normalized AnnData starts a fresh fit; pass
+lengths again to retain length correction.
 
 Following the
 [`tximport`](https://bioconductor.org/packages/release/bioc/html/tximport.html) and

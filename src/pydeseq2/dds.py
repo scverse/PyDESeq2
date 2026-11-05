@@ -53,9 +53,6 @@ class DeseqDataSet(ad.AnnData):
         AnnData from which to initialize the DeseqDataSet.
         Must have counts ('X') and sample metadata ('obs') fields.
         If ``None``, both ``counts`` and ``metadata`` arguments must be provided.
-        Compatible pytximport objects with unscaled
-        estimated counts are detected from ``obsm["length"]`` and
-        ``uns["counts_from_abundance"] is None``.
         Backed AnnData objects are not supported; call ``adata.to_memory()`` before
         initialization.
     counts
@@ -72,9 +69,9 @@ class DeseqDataSet(ad.AnnData):
         ``counts``. When provided, PyDESeq2
         constructs gene- and sample-specific normalization factors that correct for
         transcript-length changes as well as library size. Estimated counts are rounded
-        to the nearest integer, matching DESeq2. Explicit lengths take precedence over
-        ``adata.layers["avg_tx_length"]``, which takes precedence over compatible
-        pytximport fields. (default: ``None``).
+        to the nearest integer, matching DESeq2. Pass ``adata.obsm["length"]`` explicitly
+        for pytximport input. Stored lengths alone do not enable normalization.
+        (default: ``None``).
     design
         Model design.
         Can be either a pandas DataFrame representing a design matrix, or a formulaic formula in the format ``'x + z'`` or ``'~x+z'``.
@@ -212,19 +209,11 @@ class DeseqDataSet(ad.AnnData):
         low_memory: bool = False,
     ) -> None:
         # Initialize the AnnData part
-        has_stored_transcript_lengths = (
-            adata is not None and "avg_tx_length" in adata.layers
-        )
-        selected_transcript_lengths: Any = transcript_lengths
-        has_transcript_lengths = (
-            selected_transcript_lengths is not None or has_stored_transcript_lengths
-        )
-        preserve_inherited_fit = False
+        has_transcript_lengths = transcript_lengths is not None
         if adata is not None:
-            has_pytximport_fields = (
-                "length" in adata.obsm and "counts_from_abundance" in adata.uns
+            reset_fit = has_transcript_lengths or any(
+                key in adata.layers for key in ("avg_tx_length", "normalization_factors")
             )
-            has_transcript_lengths = has_transcript_lengths or has_pytximport_fields
             counts_from_abundance = adata.uns.get("counts_from_abundance")
             if counts_from_abundance is not None and has_transcript_lengths:
                 raise ValueError(
@@ -234,19 +223,6 @@ class DeseqDataSet(ad.AnnData):
                     f"{counts_from_abundance!r}. Abundance-scaled counts must "
                     "not be combined with transcript-length offsets."
                 )
-            if (
-                has_pytximport_fields
-                and selected_transcript_lengths is None
-                and not has_stored_transcript_lengths
-            ):
-                selected_transcript_lengths = adata.obsm["length"]
-
-            preserve_inherited_fit = (
-                selected_transcript_lengths is None
-                and has_stored_transcript_lengths
-                and "normalization_factors" in adata.layers
-            )
-
             if adata.isbacked:
                 raise ValueError(
                     "DeseqDataSet requires an in-memory AnnData object. Call "
@@ -268,7 +244,7 @@ class DeseqDataSet(ad.AnnData):
             # Test counts before going further
             test_valid_counts(prepared_counts)
             integer_counts = prepared_counts.astype(int)
-            if has_transcript_lengths:
+            if reset_fit:
                 # Own the containers PyDESeq2 writes while retaining references to
                 # existing large aligned matrices.
                 # AnnData migrates legacy neighbor matrices out of uns in place.
@@ -310,32 +286,27 @@ class DeseqDataSet(ad.AnnData):
                 "Either adata or both counts and metadata arguments must be provided."
             )
 
-        if selected_transcript_lengths is not None:
-            if isinstance(selected_transcript_lengths, pd.DataFrame):
-                if not selected_transcript_lengths.index.equals(expected_length_index):
+        if transcript_lengths is not None:
+            if isinstance(transcript_lengths, pd.DataFrame):
+                if not transcript_lengths.index.equals(expected_length_index):
                     raise ValueError(
                         "transcript_lengths must have the same sample index as counts."
                     )
-                if not selected_transcript_lengths.columns.equals(
-                    expected_length_columns
-                ):
+                if not transcript_lengths.columns.equals(expected_length_columns):
                     raise ValueError(
                         "transcript_lengths must have the same gene columns as counts."
                     )
-                transcript_lengths_array = selected_transcript_lengths.to_numpy(
+                transcript_lengths_array = transcript_lengths.to_numpy(
                     dtype=float, copy=True
                 )
             else:
                 transcript_lengths_array = np.array(
-                    selected_transcript_lengths, dtype=float, copy=True
+                    transcript_lengths, dtype=float, copy=True
                 )
             self._validate_transcript_lengths(transcript_lengths_array)
             self.layers["avg_tx_length"] = transcript_lengths_array
-        elif "avg_tx_length" in self.layers:
-            stored_lengths = self.layers["avg_tx_length"]
-            transcript_lengths_array = np.asarray(stored_lengths, dtype=float)
-            self._validate_transcript_lengths(transcript_lengths_array)
-            self.layers["avg_tx_length"] = transcript_lengths_array
+        else:
+            self.layers.pop("avg_tx_length", None)
 
         self.fit_type = fit_type
         self.design = design
@@ -392,41 +363,7 @@ class DeseqDataSet(ad.AnnData):
         # Check that the design matrix has full rank
         self._check_full_rank_design()
 
-        if preserve_inherited_fit and adata is not None:
-            source_design = adata.obsm.get("design_matrix")
-            normalization_control_mask = self._make_control_mask(control_genes)
-            fit_settings = (
-                ("fit_type", fit_type),
-                ("min_mu", min_mu),
-                ("min_disp", min_disp),
-                ("max_disp", np.maximum(max_disp, self.n_obs)),
-                ("refit_cooks", refit_cooks),
-                ("min_replicates", min_replicates),
-                ("beta_tol", beta_tol),
-            )
-            preserve_inherited_fit = (
-                isinstance(source_design, pd.DataFrame)
-                and cast(pd.DataFrame, self.obsm["design_matrix"]).equals(source_design)
-                and all(
-                    hasattr(adata, attr) and np.array_equal(getattr(adata, attr), value)
-                    for attr, value in fit_settings
-                )
-                and getattr(adata, "_normalization_fit_type", None)
-                == size_factors_fit_type
-                and hasattr(adata, "_normalization_control_mask")
-                and np.array_equal(
-                    adata._normalization_control_mask,
-                    normalization_control_mask,
-                )
-                and hasattr(adata, "inference")
-                and (
-                    type(adata.inference) is DefaultInference
-                    if inference is None
-                    else inference is adata.inference
-                )
-            )
-
-        if adata is not None and has_transcript_lengths and not preserve_inherited_fit:
+        if adata is not None and reset_fit:
             # Invalidate fitting state derived from copied normalization factors.
             for column in ("size_factors", "replaceable"):
                 if column in self.obs:
@@ -500,29 +437,6 @@ class DeseqDataSet(ad.AnnData):
 
         # Initialize the inference object.
         self.inference: Inference = inference or DefaultInference(n_cpus=n_cpus)
-
-        if preserve_inherited_fit and adata is not None:
-            if "LFC" in self.varm:
-                self.varm["LFC"] = self.varm["LFC"].copy()
-
-            self._normalization_fit_type: str | None = cast(
-                Any, adata
-            )._normalization_fit_type
-            self._normalization_control_mask: np.ndarray = cast(
-                Any, adata
-            )._normalization_control_mask.copy()
-
-            for attr in (
-                "non_zero_idx",
-                "non_zero_genes",
-                "counts_to_refit",
-                "new_all_zeroes_genes",
-            ):
-                if hasattr(adata, attr):
-                    setattr(self, attr, getattr(adata, attr).copy())
-
-            if hasattr(adata, "vst_fit_type"):
-                self.vst_fit_type: Literal["parametric", "mean"] = adata.vst_fit_type
 
     def _validate_transcript_lengths(self, transcript_lengths: np.ndarray) -> None:
         """Validate a sample-by-gene average transcript-length matrix."""
@@ -915,7 +829,6 @@ class DeseqDataSet(ad.AnnData):
                     )
 
         _control_mask = self._make_control_mask(control_genes)
-        normalization_control_mask = _control_mask.copy()
 
         if "avg_tx_length" not in self.layers and "normalization_factors" in self.layers:
             del self.layers["normalization_factors"]
@@ -990,8 +903,6 @@ class DeseqDataSet(ad.AnnData):
 
         end = time.time()
         self.var["_normed_means"] = self.layers["normed_counts"].mean(axis=0)
-        self._normalization_fit_type = fit_type
-        self._normalization_control_mask = normalization_control_mask
 
         if not self.quiet:
             print(f"... done in {end - start:.2f} seconds.\n", file=sys.stderr)

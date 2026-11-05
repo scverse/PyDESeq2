@@ -7,7 +7,6 @@ import pytest
 
 from pydeseq2.datasets import load_example_data
 from pydeseq2.dds import DeseqDataSet
-from pydeseq2.default_inference import DefaultInference
 from pydeseq2.dispersions import fit_moments_dispersions
 from pydeseq2.ds import DeseqStats
 
@@ -64,59 +63,6 @@ def varying_transcript_lengths(counts):
     lengths = (800.0 + 100.0 * np.arange(counts.shape[1]))[None, :]
     lengths = lengths * (1.0 + 0.2 * np.outer(sample_effect, gene_effect))
     return pd.DataFrame(lengths, index=counts.index, columns=counts.columns)
-
-
-def assert_fit_state_cleared(dds):
-    assert set(dds.obs).isdisjoint({"size_factors", "replaceable"})
-    assert set(dds.var).isdisjoint(
-        {
-            "_normed_means",
-            "non_zero",
-            "_MoM_dispersions",
-            "genewise_dispersions",
-            "vst_genewise_dispersions",
-            "_genewise_converged",
-            "fitted_dispersions",
-            "MAP_dispersions",
-            "_MAP_converged",
-            "dispersions",
-            "_outlier_genes",
-            "_LFC_converged",
-            "_pvalue_cooks_outlier",
-            "replaced",
-            "refitted",
-        }
-    )
-    assert set(dds.obsm).isdisjoint({"_mu_LFC", "_hat_diagonals"})
-    assert "LFC" not in dds.varm
-    assert set(dds.layers).isdisjoint(
-        {
-            "normalization_factors",
-            "normed_counts",
-            "_mu_hat",
-            "_vst_mu_hat",
-            "cooks",
-            "replace_cooks",
-            "vst_counts",
-        }
-    )
-    assert set(dds.uns).isdisjoint(
-        {
-            "trend_coeffs",
-            "vst_trend_coeffs",
-            "mean_disp",
-            "disp_function_type",
-            "_squared_logres",
-            "prior_disp_var",
-        }
-    )
-    for attr in (
-        "non_zero_idx",
-        "non_zero_genes",
-        "counts_to_refit",
-        "new_all_zeroes_genes",
-    ):
-        assert not hasattr(dds, attr)
 
 
 def test_transcript_length_normalization_matches_deseq2_formula():
@@ -207,7 +153,7 @@ def test_transcript_lengths_must_be_positive_and_finite(length_source, bad_value
         lengths = np.asarray(adata.obsm["length"]).copy()
         lengths[0, 0] = bad_value
         adata.obsm["length"] = lengths
-        kwargs = {"adata": adata}
+        kwargs = {"adata": adata, "transcript_lengths": lengths}
 
     with pytest.raises(ValueError, match="transcript_lengths"):
         DeseqDataSet(**kwargs)
@@ -285,6 +231,7 @@ def test_transcript_length_factors_are_used_throughout_pipeline():
 
     dds = DeseqDataSet(
         adata=adata,
+        transcript_lengths=adata.obsm["length"],
         design="~0 + condition",
         fit_type="mean",
         refit_cooks=False,
@@ -350,17 +297,6 @@ def test_transcript_length_factors_are_used_throughout_pipeline():
     np.testing.assert_allclose(
         dds.layers["vst_counts"], reference_dds.layers["vst_counts"]
     )
-
-    restored_dds = DeseqDataSet(
-        adata=dds,
-        design="~0 + condition",
-        fit_type="mean",
-        refit_cooks=False,
-        n_cpus=1,
-        quiet=True,
-    )
-    assert restored_dds.vst_fit_type == dds.vst_fit_type
-    np.testing.assert_allclose(restored_dds.vst_transform(), dds.vst_transform())
 
 
 def test_moments_dispersions_match_deseq2_with_matrix_factors():
@@ -447,249 +383,60 @@ def test_scalar_size_factor_refit_clears_stale_matrix_factors():
     )
 
 
-@pytest.mark.parametrize("length_source", ["canonical", "pytximport"])
-def test_implicit_transcript_lengths_clear_scalar_normalization_state(
-    length_source,
+@pytest.mark.parametrize(
+    "source_lengths,opt_in", [(False, True), (True, False), (True, True)]
+)
+@pytest.mark.parametrize("serialized", [False, True])
+def test_inherited_length_normalization_starts_a_fresh_fit(
+    source_lengths, opt_in, serialized
 ):
-    counts, metadata, transcript_lengths = small_tximport_data()
-    counts = counts.round().astype(int)
+    counts = load_example_data("raw_counts", "synthetic", debug=False)
+    metadata = load_example_data("metadata", "synthetic", debug=False)
+    lengths = varying_transcript_lengths(counts)
+    settings = {"fit_type": "mean", "refit_cooks": False, "n_cpus": 1, "quiet": True}
     source = DeseqDataSet(
         counts=counts,
         metadata=metadata,
-        design="~condition",
-        quiet=True,
+        transcript_lengths=lengths if source_lengths else None,
+        **settings,
     )
-    source.fit_size_factors()
-    source_size_factors = source.obs["size_factors"].copy()
-    source_normed_counts = source.layers["normed_counts"].copy()
-
-    if length_source == "canonical":
-        source.layers["avg_tx_length"] = transcript_lengths.to_numpy()
-    else:
-        source.obsm["length"] = transcript_lengths.to_numpy()
-        source.uns["counts_from_abundance"] = None
-
-    dds = DeseqDataSet(adata=source, design="~condition", quiet=True)
+    source.deseq2()
+    original_counts = source.layers["normed_counts"].copy()
+    original_lfc = source.varm["LFC"].copy()
+    adata = source.to_picklable_anndata() if serialized else source
+    # Different lengths must replace the source normalization, not reuse its fit.
+    replacement = lengths.copy()
+    replacement.iloc[:, 0] *= np.linspace(1.0, 2.0, len(lengths))
+    kwargs = dict(transcript_lengths=replacement if opt_in else None, **settings)
+    dds = DeseqDataSet(adata=adata, **kwargs)
+    reference = DeseqDataSet(counts=counts, metadata=metadata, **kwargs)
     assert "size_factors" not in dds.obs
-    assert set(dds.layers).isdisjoint({"normalization_factors", "normed_counts"})
-
-    reference_dds = DeseqDataSet(
-        counts=counts,
-        metadata=metadata,
-        transcript_lengths=transcript_lengths,
-        design="~condition",
-        quiet=True,
-    )
-    dds.fit_genewise_dispersions()
-    reference_dds.fit_genewise_dispersions()
-
+    assert "LFC" not in dds.varm
+    # These public methods would reuse stale fitted state if it survived construction.
+    for dataset in (dds, reference):
+        dataset.fit_dispersion_trend()
+        dataset.fit_LFC()
+        dataset.vst(fit_type="mean")
     np.testing.assert_allclose(
-        dds.layers["normalization_factors"],
-        reference_dds.layers["normalization_factors"],
+        dds.layers["normed_counts"], reference.layers["normed_counts"]
     )
-    np.testing.assert_allclose(
-        dds.layers["normed_counts"], reference_dds.layers["normed_counts"]
-    )
-    np.testing.assert_allclose(
-        dds.var["genewise_dispersions"], reference_dds.var["genewise_dispersions"]
-    )
-    pd.testing.assert_series_equal(source.obs["size_factors"], source_size_factors)
-    np.testing.assert_allclose(source.layers["normed_counts"], source_normed_counts)
-
-
-def test_inherited_normalization_uses_effective_fit_settings():
-    counts, metadata, transcript_lengths = small_tximport_data()
-    source = DeseqDataSet(
-        counts=counts,
-        metadata=metadata,
-        transcript_lengths=transcript_lengths,
-        design="~condition",
-        quiet=True,
-    )
-    source.fit_size_factors(
-        fit_type="poscounts",
-        control_genes=["gene1", "gene2"],
-    )
-    source_factors = source.layers["normalization_factors"].copy()
-
-    mismatched_dds = DeseqDataSet(
-        adata=source,
-        design="~condition",
-        quiet=True,
-    )
-    assert "size_factors" not in mismatched_dds.obs
-    assert "normalization_factors" not in mismatched_dds.layers
-
-    matching_dds = DeseqDataSet(
-        adata=source,
-        design="~condition",
-        size_factors_fit_type="poscounts",
-        control_genes=["gene1", "gene2"],
-        quiet=True,
-    )
-    np.testing.assert_allclose(
-        matching_dds.layers["normalization_factors"],
-        source_factors,
-    )
-    np.testing.assert_allclose(source.layers["normalization_factors"], source_factors)
-
-
-def test_explicit_transcript_lengths_clear_inherited_fitted_state():
-    counts = load_example_data("raw_counts", "synthetic", debug=False)
-    metadata = load_example_data("metadata", "synthetic", debug=False)
-    transcript_lengths = varying_transcript_lengths(counts)
-    fitted_dds = DeseqDataSet(
-        counts=counts,
-        metadata=metadata,
-        transcript_lengths=transcript_lengths,
-        design="~0 + condition",
-        fit_type="mean",
-        refit_cooks=False,
-        n_cpus=1,
-        quiet=True,
-    )
-    fitted_dds.deseq2()
-    original_size_factors = fitted_dds.obs["size_factors"].copy()
-    original_normalization_factors = fitted_dds.layers["normalization_factors"].copy()
-    original_normed_counts = fitted_dds.layers["normed_counts"].copy()
-
-    mismatched_design_dds = DeseqDataSet(
-        adata=fitted_dds,
-        design="~condition",
-        fit_type="mean",
-        refit_cooks=False,
-        n_cpus=1,
-        quiet=True,
-    )
-    mismatched_refit_dds = DeseqDataSet(
-        adata=fitted_dds,
-        design="~0 + condition",
-        fit_type="mean",
-        refit_cooks=True,
-        n_cpus=1,
-        quiet=True,
-    )
-    for mismatched_dds in (mismatched_design_dds, mismatched_refit_dds):
-        assert_fit_state_cleared(mismatched_dds)
-
-    restored_dds = DeseqDataSet(
-        adata=fitted_dds,
-        design="~0 + condition",
-        fit_type="mean",
-        refit_cooks=False,
-        n_cpus=1,
-        quiet=True,
-    )
-    np.testing.assert_array_equal(restored_dds.non_zero_idx, fitted_dds.non_zero_idx)
-    assert restored_dds.non_zero_genes.equals(fitted_dds.non_zero_genes)
-    restored_stats = DeseqStats(
-        restored_dds, contrast=["condition", "B", "A"], quiet=True, n_cpus=1
-    )
-    restored_stats.summary()
-    coefficient = restored_stats.LFC.columns[-1]
-    restored_stats.lfc_shrink(coeff=coefficient, adapt=False)
-    assert restored_stats.shrunk_LFCs
-
-    replacement_lengths = transcript_lengths.copy()
-    replacement_lengths.iloc[:, 0] *= np.linspace(1.0, 2.0, len(replacement_lengths))
-    dds = DeseqDataSet(
-        adata=fitted_dds,
-        transcript_lengths=replacement_lengths,
-        design="~0 + condition",
-        fit_type="mean",
-        refit_cooks=False,
-        n_cpus=1,
-        quiet=True,
-    )
-
-    assert_fit_state_cleared(dds)
-    assert "size_factors" in fitted_dds.obs
-    assert "genewise_dispersions" in fitted_dds.var
-    assert "_mu_LFC" in fitted_dds.obsm
-    assert "LFC" in fitted_dds.varm
-    assert "cooks" in fitted_dds.layers
-    assert "mean_disp" in fitted_dds.uns
-
-    reference_dds = DeseqDataSet(
-        counts=counts,
-        metadata=metadata,
-        transcript_lengths=replacement_lengths,
-        design="~0 + condition",
-        fit_type="mean",
-        refit_cooks=False,
-        n_cpus=1,
-        quiet=True,
-    )
-    dds.fit_dispersion_trend()
-    reference_dds.fit_dispersion_trend()
-    dds.fit_LFC()
-    reference_dds.fit_LFC()
-
-    np.testing.assert_allclose(
-        dds.layers["normalization_factors"],
-        reference_dds.layers["normalization_factors"],
-    )
-    np.testing.assert_allclose(dds.var["dispersions"], reference_dds.var["dispersions"])
-    np.testing.assert_allclose(dds.varm["LFC"], reference_dds.varm["LFC"])
-    np.testing.assert_allclose(fitted_dds.obs["size_factors"], original_size_factors)
-    np.testing.assert_allclose(
-        fitted_dds.layers["normalization_factors"],
-        original_normalization_factors,
-    )
-    np.testing.assert_allclose(
-        fitted_dds.layers["normed_counts"], original_normed_counts
-    )
-
-
-def test_inherited_fit_requires_complete_configuration_provenance():
-    class CustomInference(DefaultInference):
-        pass
-
-    counts = load_example_data("raw_counts", "synthetic", debug=False)
-    metadata = load_example_data("metadata", "synthetic", debug=False)
-    transcript_lengths = varying_transcript_lengths(counts)
-    custom_inference = CustomInference(n_cpus=1)
-    fitted_dds = DeseqDataSet(
-        counts=counts,
-        metadata=metadata,
-        transcript_lengths=transcript_lengths,
-        design="~0 + condition",
-        fit_type="mean",
-        refit_cooks=False,
-        inference=custom_inference,
-        n_cpus=1,
-        quiet=True,
-    )
-    fitted_dds.deseq2()
-
-    picklable_adata = fitted_dds.to_picklable_anndata()
-    picklable_adata.inference = custom_inference
-    missing_provenance_dds = DeseqDataSet(
-        adata=picklable_adata,
-        design="~0 + condition",
-        fit_type="parametric",
-        refit_cooks=True,
-        inference=custom_inference,
-        n_cpus=1,
-        quiet=True,
-    )
-    omitted_custom_inference_dds = DeseqDataSet(
-        adata=fitted_dds,
-        design="~0 + condition",
-        fit_type="mean",
-        refit_cooks=False,
-        n_cpus=1,
-        quiet=True,
-    )
-
-    for incompatible_dds in (
-        missing_provenance_dds,
-        omitted_custom_inference_dds,
-    ):
-        assert_fit_state_cleared(incompatible_dds)
-
-    assert "LFC" in fitted_dds.varm
-    assert hasattr(fitted_dds, "non_zero_idx")
+    np.testing.assert_allclose(dds.var["dispersions"], reference.var["dispersions"])
+    np.testing.assert_allclose(dds.varm["LFC"], reference.varm["LFC"])
+    np.testing.assert_allclose(dds.layers["vst_counts"], reference.layers["vst_counts"])
+    if opt_in:
+        np.testing.assert_allclose(
+            dds.layers["normalization_factors"],
+            reference.layers["normalization_factors"],
+        )
+    else:
+        assert "normalization_factors" not in dds.layers
+        np.testing.assert_allclose(
+            dds.vst_transform(dds.X), reference.vst_transform(reference.X)
+        )
+    np.testing.assert_array_equal(source.layers["normed_counts"], original_counts)
+    pd.testing.assert_frame_equal(source.varm["LFC"], original_lfc)
+    if source_lengths:
+        np.testing.assert_array_equal(source.layers["avg_tx_length"], lengths.to_numpy())
 
 
 def test_cooks_outlier_refit_preserves_matrix_factors():
@@ -707,6 +454,7 @@ def test_cooks_outlier_refit_preserves_matrix_factors():
 
     dds = DeseqDataSet(
         adata=adata,
+        transcript_lengths=adata.obsm["length"],
         design="~0 + condition",
         fit_type="mean",
         refit_cooks=True,
@@ -756,26 +504,6 @@ def test_cooks_outlier_refit_preserves_matrix_factors():
         reference_dds.varm["LFC"].loc[reference_dds.var_names[refitted]],
     )
 
-    source_lfc = dds.varm["LFC"].copy()
-    restored_dds = DeseqDataSet(
-        adata=dds,
-        design="~0 + condition",
-        fit_type="mean",
-        refit_cooks=True,
-        min_replicates=3,
-        n_cpus=1,
-        quiet=True,
-    )
-    assert restored_dds.new_all_zeroes_genes.equals(dds.new_all_zeroes_genes)
-    assert restored_dds.counts_to_refit is not dds.counts_to_refit
-    np.testing.assert_array_equal(restored_dds.counts_to_refit.X, dds.counts_to_refit.X)
-    np.testing.assert_allclose(
-        restored_dds.counts_to_refit.layers["normalization_factors"],
-        dds.counts_to_refit.layers["normalization_factors"],
-    )
-    restored_dds.varm["LFC"].iloc[0, 0] += 1
-    pd.testing.assert_frame_equal(dds.varm["LFC"], source_lfc)
-
 
 def test_pytximport_backed_anndata_requires_memory(tmp_path):
     adata = ad.AnnData(X=np.ones((2, 2)))
@@ -796,7 +524,7 @@ def test_pytximport_dataframe_length_labels_are_preserved():
     adata, _, _, transcript_lengths = small_pytximport_adata()
     adata.obsm["length"] = transcript_lengths.copy()
 
-    dds = DeseqDataSet(adata=adata, quiet=True)
+    dds = DeseqDataSet(adata=adata, transcript_lengths=adata.obsm["length"], quiet=True)
 
     assert dds.obs_names.equals(transcript_lengths.index)
     assert dds.var_names.equals(transcript_lengths.columns)
@@ -810,36 +538,19 @@ def test_pytximport_dataframe_gene_labels_must_match():
     adata.obsm["length"] = transcript_lengths.rename(columns={"gene1": "wrong_gene"})
 
     with pytest.raises(ValueError, match="same gene columns"):
-        DeseqDataSet(adata=adata, quiet=True)
+        DeseqDataSet(adata=adata, transcript_lengths=adata.obsm["length"], quiet=True)
 
 
-def test_pytximport_scaled_count_mode_is_rejected():
-    adata, _, _, _ = small_pytximport_adata()
-    adata.uns["counts_from_abundance"] = "length_scaled_tpm"
-
-    with pytest.raises(ValueError, match="unscaled estimated counts"):
-        DeseqDataSet(adata=adata, quiet=True)
-
-
-@pytest.mark.parametrize("higher_precedence_source", ["explicit", "canonical"])
-def test_scaled_pytximport_mode_rejects_higher_precedence_lengths(
-    higher_precedence_source,
-):
-    adata, _, _, transcript_lengths = small_pytximport_adata()
-    adata.uns["counts_from_abundance"] = "length_scaled_tpm"
+@pytest.mark.parametrize("mode", ["scaled_tpm", "length_scaled_tpm"])
+@pytest.mark.parametrize("stored_lengths", [False, True])
+def test_scaled_pytximport_rejects_explicit_length_correction(mode, stored_lengths):
+    adata, _, _, lengths = small_pytximport_adata()
+    adata.uns["counts_from_abundance"] = mode
     del adata.obsm["length"]
-    explicit_lengths = None
-    if higher_precedence_source == "explicit":
-        explicit_lengths = transcript_lengths
-    else:
-        adata.layers["avg_tx_length"] = transcript_lengths.to_numpy()
-
+    if stored_lengths:
+        adata.layers["avg_tx_length"] = lengths.to_numpy()
     with pytest.raises(ValueError, match="must not be combined"):
-        DeseqDataSet(
-            adata=adata,
-            transcript_lengths=explicit_lengths,
-            quiet=True,
-        )
+        DeseqDataSet(adata=adata, transcript_lengths=lengths, quiet=True)
 
 
 def test_pytximport_lengths_reject_unsynchronized_gene_subsetting():
@@ -847,41 +558,47 @@ def test_pytximport_lengths_reject_unsynchronized_gene_subsetting():
     subset = adata[:, :2].copy()
 
     with pytest.raises(ValueError, match="same shape"):
-        DeseqDataSet(adata=subset, quiet=True)
+        DeseqDataSet(adata=subset, transcript_lengths=subset.obsm["length"], quiet=True)
 
 
-@pytest.mark.parametrize("use_explicit_lengths", [False, True])
-def test_transcript_length_source_precedence(use_explicit_lengths):
-    adata, _, _, transcript_lengths = small_pytximport_adata()
-    canonical_lengths = transcript_lengths.to_numpy() + 100.0
-    source_lengths = canonical_lengths.copy()
-    explicit_lengths = transcript_lengths + 200.0
-    adata.layers["avg_tx_length"] = canonical_lengths
-
-    dds = DeseqDataSet(
-        adata=adata,
-        transcript_lengths=explicit_lengths if use_explicit_lengths else None,
-        quiet=True,
-    )
-
-    expected = explicit_lengths.to_numpy() if use_explicit_lengths else canonical_lengths
-    np.testing.assert_allclose(dds.layers["avg_tx_length"], expected)
-    np.testing.assert_allclose(adata.layers["avg_tx_length"], source_lengths)
+def test_explicit_lengths_override_unused_stored_lengths():
+    adata, _, _, lengths = small_pytximport_adata()
+    adata.layers["avg_tx_length"] = np.full(adata.shape, np.nan)
+    adata.obsm["length"] = np.zeros(adata.shape)
+    dds = DeseqDataSet(adata=adata, transcript_lengths=lengths, quiet=True)
+    np.testing.assert_array_equal(dds.layers["avg_tx_length"], lengths.to_numpy())
+    assert np.isnan(adata.layers["avg_tx_length"]).all()
 
 
-@pytest.mark.parametrize("missing_field", ["counts_from_abundance", "length"])
-def test_incomplete_pytximport_fields_are_not_auto_detected(missing_field):
-    adata, counts, _, _ = small_pytximport_adata()
-    adata.X = np.rint(counts.to_numpy())
-    if missing_field == "counts_from_abundance":
-        del adata.uns["counts_from_abundance"]
-    else:
+@pytest.mark.parametrize("mode", [None, "scaled_tpm", "length_scaled_tpm"])
+@pytest.mark.parametrize(
+    "stored_layer", [None, "avg_tx_length", "normalization_factors"]
+)
+def test_stored_metadata_does_not_enable_length_normalization(mode, stored_layer):
+    adata, counts, metadata, _ = small_pytximport_adata()
+    adata.uns["counts_from_abundance"] = mode
+    # Unused lengths must neither be validated nor cause estimated counts to be rounded.
+    adata.obsm["length"] = np.full(adata.shape, np.nan)
+    if stored_layer is not None:
         del adata.obsm["length"]
-        adata.uns["counts_from_abundance"] = "scaled_tpm"
-
+        adata.layers[stored_layer] = np.full(adata.shape, np.nan)
+    with pytest.raises(ValueError, match="only contain integers"):
+        DeseqDataSet(adata=adata, quiet=True)
+    adata.X = counts.round().to_numpy().astype(int)
     dds = DeseqDataSet(adata=adata, quiet=True)
-
+    reference = DeseqDataSet(
+        counts=counts.round().astype(int), metadata=metadata, quiet=True
+    )
+    dds.fit_size_factors()
+    reference.fit_size_factors()
     assert "avg_tx_length" not in dds.layers
+    assert "normalization_factors" not in dds.layers
+    np.testing.assert_allclose(dds.obs["size_factors"], reference.obs["size_factors"])
+    np.testing.assert_allclose(
+        dds.layers["normed_counts"], reference.layers["normed_counts"]
+    )
+    if stored_layer is not None:
+        assert np.isnan(adata.layers[stored_layer]).all()
 
 
 def test_pytximport_input_anndata_is_not_mutated():
@@ -890,7 +607,7 @@ def test_pytximport_input_anndata_is_not_mutated():
     connectivities = np.eye(adata.n_obs)
     adata.uns["neighbors"] = {"connectivities": connectivities}
 
-    dds = DeseqDataSet(adata=adata, quiet=True)
+    dds = DeseqDataSet(adata=adata, transcript_lengths=adata.obsm["length"], quiet=True)
     dds.fit_size_factors()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", FutureWarning)
