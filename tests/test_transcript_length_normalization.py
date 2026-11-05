@@ -4,20 +4,6 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 import pytest
-from scipy.sparse import bsr_array
-from scipy.sparse import bsr_matrix
-from scipy.sparse import coo_array
-from scipy.sparse import coo_matrix
-from scipy.sparse import csc_array
-from scipy.sparse import csc_matrix
-from scipy.sparse import csr_array
-from scipy.sparse import csr_matrix
-from scipy.sparse import dia_array
-from scipy.sparse import dia_matrix
-from scipy.sparse import dok_array
-from scipy.sparse import dok_matrix
-from scipy.sparse import lil_array
-from scipy.sparse import lil_matrix
 
 from pydeseq2.datasets import load_example_data
 from pydeseq2.dds import DeseqDataSet
@@ -78,21 +64,6 @@ def varying_transcript_lengths(counts):
     lengths = (800.0 + 100.0 * np.arange(counts.shape[1]))[None, :]
     lengths = lengths * (1.0 + 0.2 * np.outer(sample_effect, gene_effect))
     return pd.DataFrame(lengths, index=counts.index, columns=counts.columns)
-
-
-def anndata_with_sparse_counts(sparse_counts, *, obs=None, var=None):
-    try:
-        with warnings.catch_warnings():
-            warnings.filterwarnings(
-                "ignore",
-                message="AnnData previously had undefined behavior around matrices",
-                category=FutureWarning,
-            )
-            return ad.AnnData(X=sparse_counts, obs=obs, var=var)
-    except ValueError as error:
-        if not str(error).startswith("Only CSR and CSC"):
-            raise
-        pytest.skip(f"{type(sparse_counts).__name__} is not supported by AnnData")
 
 
 def assert_fit_state_cleared(dds):
@@ -300,12 +271,12 @@ def test_external_vst_transform_requires_matching_transcript_lengths():
         dds.vst_transform(dds.X)
 
 
-def test_transcript_length_factors_are_used_throughout_pipeline(monkeypatch):
+def test_transcript_length_factors_are_used_throughout_pipeline():
     counts = load_example_data("raw_counts", "synthetic", debug=False)
     metadata = load_example_data("metadata", "synthetic", debug=False)
     transcript_lengths = varying_transcript_lengths(counts)
     adata = ad.AnnData(
-        X=csc_matrix(counts.to_numpy()),
+        X=counts.to_numpy(),
         obs=metadata,
         var=pd.DataFrame(index=counts.columns),
     )
@@ -374,13 +345,11 @@ def test_transcript_length_factors_are_used_throughout_pipeline(monkeypatch):
     np.testing.assert_allclose(
         stats.LFC[coefficient], reference_stats.LFC[coefficient], equal_nan=True
     )
-    monkeypatch.setattr(dds, "fit_size_factors", lambda *args, **kwargs: pytest.fail())
     dds.vst(fit_type="mean")
     reference_dds.vst(fit_type="mean")
     np.testing.assert_allclose(
         dds.layers["vst_counts"], reference_dds.layers["vst_counts"]
     )
-    assert isinstance(dds.X, csc_matrix)
 
     restored_dds = DeseqDataSet(
         adata=dds,
@@ -392,237 +361,6 @@ def test_transcript_length_factors_are_used_throughout_pipeline(monkeypatch):
     )
     assert restored_dds.vst_fit_type == dds.vst_fit_type
     np.testing.assert_allclose(restored_dds.vst_transform(), dds.vst_transform())
-
-
-@pytest.mark.parametrize("sparse_constructor", [csr_matrix, csr_array])
-def test_sparse_anndata_ratio_pipeline_matches_dense(sparse_constructor):
-    counts = load_example_data("raw_counts", "synthetic", debug=False)
-    metadata = load_example_data("metadata", "synthetic", debug=False)
-    adata = ad.AnnData(
-        X=sparse_constructor(counts.to_numpy()),
-        obs=metadata.copy(),
-        var=pd.DataFrame(index=counts.columns),
-    )
-
-    dds = DeseqDataSet(
-        adata=adata,
-        design="~0 + condition",
-        fit_type="mean",
-        refit_cooks=False,
-        n_cpus=1,
-        quiet=True,
-    )
-    reference_dds = DeseqDataSet(
-        counts=counts,
-        metadata=metadata,
-        design="~0 + condition",
-        fit_type="mean",
-        refit_cooks=False,
-        n_cpus=1,
-        quiet=True,
-    )
-    dds.deseq2()
-    reference_dds.deseq2()
-
-    np.testing.assert_allclose(
-        dds.obs["size_factors"], reference_dds.obs["size_factors"]
-    )
-    np.testing.assert_allclose(
-        dds.layers["normed_counts"], reference_dds.layers["normed_counts"]
-    )
-    dispersion_columns = ["_MoM_dispersions", "genewise_dispersions", "dispersions"]
-    np.testing.assert_allclose(
-        dds.var[dispersion_columns], reference_dds.var[dispersion_columns]
-    )
-    np.testing.assert_allclose(dds.varm["LFC"], reference_dds.varm["LFC"])
-    assert isinstance(dds.X, sparse_constructor)
-
-
-@pytest.mark.parametrize(
-    "sparse_constructor",
-    [
-        bsr_matrix,
-        coo_matrix,
-        dia_matrix,
-        dok_matrix,
-        lil_matrix,
-        bsr_array,
-        coo_array,
-        dia_array,
-        dok_array,
-        lil_array,
-    ],
-)
-def test_general_sparse_anndata_pipeline_matches_dense(sparse_constructor):
-    counts, metadata, _ = small_tximport_data()
-    counts = counts.round().astype(int)
-    adata = anndata_with_sparse_counts(
-        sparse_constructor(counts.to_numpy()),
-        obs=metadata.copy(),
-        var=pd.DataFrame(index=counts.columns),
-    )
-
-    dds = DeseqDataSet(adata=adata, design="~condition", quiet=True)
-    assert dds.X.format == "csr"
-    np.testing.assert_array_equal(dds.X.toarray(), counts.to_numpy())
-
-
-@pytest.mark.parametrize(
-    "sparse_constructor",
-    [coo_matrix, csr_array, csc_matrix],
-)
-def test_sparse_anndata_sums_duplicates_before_validation(sparse_constructor):
-    data = np.array([0.5, 0.5, 2.0])
-    if sparse_constructor is coo_matrix:
-        sparse_counts = sparse_constructor(
-            (data, (np.array([0, 0, 1]), np.array([0, 0, 1]))),
-            shape=(2, 2),
-        )
-    else:
-        sparse_counts = sparse_constructor(
-            (data, np.array([0, 0, 1]), np.array([0, 2, 3])),
-            shape=(2, 2),
-        )
-
-    adata = anndata_with_sparse_counts(sparse_counts)
-    source_data = adata.X.data.copy()
-
-    dds = DeseqDataSet(adata=adata, design="~1", quiet=True)
-
-    np.testing.assert_array_equal(dds.X.toarray(), [[1, 0], [0, 2]])
-    assert dds.X.nnz == 2
-    assert adata.X.nnz == 3
-    np.testing.assert_array_equal(adata.X.data, source_data)
-
-
-def test_general_sparse_transcript_length_counts():
-    counts, metadata, transcript_lengths = small_tximport_data()
-    adata = anndata_with_sparse_counts(
-        dok_array(counts.to_numpy()),
-        obs=metadata.copy(),
-        var=pd.DataFrame(index=counts.columns),
-    )
-
-    dds = DeseqDataSet(
-        adata=adata,
-        transcript_lengths=transcript_lengths,
-        design="~condition",
-        quiet=True,
-    )
-    dds.fit_size_factors()
-
-    assert dds.X.format == "csr"
-    np.testing.assert_array_equal(dds.X.toarray(), np.rint(counts.to_numpy()))
-    assert "normalization_factors" in dds.layers
-    assert dds.layers["normalization_factors"].shape == dds.shape
-
-
-def test_sparse_anndata_poscounts_size_factors_match_dense():
-    counts, metadata, _ = small_tximport_data()
-    counts = counts.round().astype(int)
-    for idx in range(counts.shape[1]):
-        counts.iat[idx, idx] = 0
-    adata = ad.AnnData(
-        X=csc_array(counts.to_numpy()),
-        obs=metadata.copy(),
-        var=pd.DataFrame(index=counts.columns),
-    )
-    dds = DeseqDataSet(adata=adata, design="~condition", quiet=True)
-    reference_dds = DeseqDataSet(
-        counts=counts,
-        metadata=metadata,
-        design="~condition",
-        quiet=True,
-    )
-
-    dds.fit_size_factors("poscounts")
-    reference_dds.fit_size_factors("poscounts")
-
-    np.testing.assert_allclose(
-        dds.obs["size_factors"], reference_dds.obs["size_factors"]
-    )
-    np.testing.assert_allclose(
-        dds.layers["normed_counts"], reference_dds.layers["normed_counts"]
-    )
-    assert isinstance(dds.layers["normed_counts"], np.ndarray)
-    assert isinstance(dds.X, csc_array)
-
-
-def test_sparse_anndata_iterative_size_factors_match_dense():
-    counts = load_example_data("raw_counts", "synthetic", debug=False).iloc[:20]
-    metadata = load_example_data("metadata", "synthetic", debug=False).loc[counts.index]
-    adata = ad.AnnData(
-        X=csr_array(counts.to_numpy()),
-        obs=metadata.copy(),
-        var=pd.DataFrame(index=counts.columns),
-    )
-    dds = DeseqDataSet(adata=adata, design="~1", n_cpus=1, quiet=True)
-    reference_dds = DeseqDataSet(
-        counts=counts,
-        metadata=metadata,
-        design="~1",
-        n_cpus=1,
-        quiet=True,
-    )
-    for dataset in (dds, reference_dds):
-        dataset.logmeans = np.ones(dataset.n_vars)
-        dataset.filtered_genes = np.ones(dataset.n_vars, dtype=bool)
-        dataset._fit_iterate_size_factors(niter=1)
-
-    np.testing.assert_allclose(
-        dds.obs["size_factors"], reference_dds.obs["size_factors"]
-    )
-    np.testing.assert_allclose(
-        dds.layers["normed_counts"], reference_dds.layers["normed_counts"]
-    )
-    assert dds.logmeans is None
-    assert dds.filtered_genes is None
-    assert isinstance(dds.layers["normed_counts"], np.ndarray)
-    assert isinstance(dds.X, csr_array)
-
-
-@pytest.mark.parametrize("sparse_constructor", [csr_matrix, csr_array])
-def test_sparse_ratio_falls_back_to_iterative(monkeypatch, sparse_constructor):
-    counts, metadata, _ = small_tximport_data()
-    counts = counts.round().astype(int)
-    for idx in range(counts.shape[1]):
-        counts.iat[idx, idx] = 0
-    adata = ad.AnnData(
-        X=sparse_constructor(counts.to_numpy()),
-        obs=metadata.copy(),
-        var=pd.DataFrame(index=counts.columns),
-    )
-    dds = DeseqDataSet(adata=adata, design="~condition", quiet=True)
-    iterative_called = False
-
-    def fit_iterative():
-        nonlocal iterative_called
-        iterative_called = True
-        dds.obs["size_factors"] = np.ones(dds.n_obs)
-        dds.layers["normed_counts"] = dds.X.toarray()
-        dds.logmeans = None
-        dds.filtered_genes = None
-
-    monkeypatch.setattr(dds, "_fit_iterate_size_factors", fit_iterative)
-
-    with pytest.warns(UserWarning, match="Switching to iterative mode"):
-        dds.fit_size_factors("ratio")
-
-    assert iterative_called
-
-
-def test_sparse_array_cooks_outlier():
-    counts, metadata, _ = small_tximport_data()
-    counts = counts.round().astype(int)
-    adata = ad.AnnData(
-        X=csr_array(counts.to_numpy()),
-        obs=metadata.copy(),
-        var=pd.DataFrame(index=counts.columns),
-    )
-    dds = DeseqDataSet(adata=adata, design="~condition", refit_cooks=False, quiet=True)
-    dds.layers["cooks"] = np.zeros(dds.shape)
-    dds.layers["cooks"][-1, 0] = np.inf
-    np.testing.assert_array_equal(dds.cooks_outlier(), [True, False, False])
 
 
 def test_moments_dispersions_match_deseq2_with_matrix_factors():
@@ -668,22 +406,6 @@ def test_moments_dispersions_align_matrix_factors_after_zero_gene_filtering():
         fit_moments_dispersions(normed_counts, normalization_factors),
         np.array([2.0 / 196.0]),
     )
-
-
-def test_sparse_estimated_counts_round_after_summing_duplicates():
-    counts = csr_matrix(
-        (np.array([0.4, 0.4, 0.4]), np.array([0, 0, 1]), np.array([0, 2, 3])),
-        shape=(2, 2),
-    )
-    adata = ad.AnnData(X=counts)
-    adata.obsm["length"] = np.ones((2, 2))
-    adata.uns["counts_from_abundance"] = None
-
-    dds = DeseqDataSet(adata=adata, design="~1", quiet=True)
-
-    np.testing.assert_array_equal(dds.X.toarray(), np.array([[1, 0], [0, 0]]))
-    assert dds.X.nnz == 1
-    assert adata.X.nnz == 3
 
 
 def test_matching_integer_transcript_length_labels_are_accepted():
@@ -976,7 +698,7 @@ def test_cooks_outlier_refit_preserves_matrix_factors():
     counts.iloc[0, 0] *= 10_000
     transcript_lengths = varying_transcript_lengths(counts)
     adata = ad.AnnData(
-        X=csr_matrix(counts.to_numpy()),
+        X=counts.to_numpy(),
         obs=metadata,
         var=pd.DataFrame(index=counts.columns),
     )
@@ -1033,7 +755,6 @@ def test_cooks_outlier_refit_preserves_matrix_factors():
         dds.varm["LFC"].loc[dds.var_names[refitted]],
         reference_dds.varm["LFC"].loc[reference_dds.var_names[refitted]],
     )
-    assert isinstance(dds.X, csr_matrix)
 
     source_lfc = dds.varm["LFC"].copy()
     restored_dds = DeseqDataSet(
@@ -1132,7 +853,6 @@ def test_pytximport_lengths_reject_unsynchronized_gene_subsetting():
 @pytest.mark.parametrize("use_explicit_lengths", [False, True])
 def test_transcript_length_source_precedence(use_explicit_lengths):
     adata, _, _, transcript_lengths = small_pytximport_adata()
-    adata.X = csr_matrix(adata.X)
     canonical_lengths = transcript_lengths.to_numpy() + 100.0
     source_lengths = canonical_lengths.copy()
     explicit_lengths = transcript_lengths + 200.0
