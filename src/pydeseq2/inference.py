@@ -26,7 +26,10 @@ class Inference(ABC):
         counts
             Raw counts.
         size_factors
-            Sample-wise scaling factors (obtained from median-of-ratios).
+            Sample-wise scaling factors with shape ``(n_samples,)``, or
+            sample-by-gene normalization factors with shape
+            ``(n_samples, n_genes)`` (obtained from median-of-ratios and optional
+            gene-specific offsets).
         design_matrix
             Design matrix.
         min_mu
@@ -60,7 +63,10 @@ class Inference(ABC):
         counts
             Raw counts.
         size_factors
-            Sample-wise scaling factors (obtained from median-of-ratios).
+            Sample-wise scaling factors with shape ``(n_samples,)``, or
+            sample-by-gene normalization factors with shape
+            ``(n_samples, n_genes)`` (obtained from median-of-ratios and optional
+            gene-specific offsets).
         design_matrix
             Design matrix.
         disp
@@ -225,7 +231,9 @@ class Inference(ABC):
             Array of deseq2-normalized read counts.
             Rows: samples, columns: genes.
         size_factors
-            DESeq2 normalization factors.
+            Sample-wise scaling factors with shape ``(n_samples,)``, or
+            sample-by-gene normalization factors with shape
+            ``(n_samples, n_genes)``.
 
         Returns
         -------
@@ -282,7 +290,9 @@ class Inference(ABC):
         size
             Size parameter of NB family (inverse of dispersion).
         offset
-            Natural logarithm of size factor.
+            Natural logarithm of sample-wise size factors with shape
+            ``(n_samples,)``, or sample-by-gene normalization factors with shape
+            ``(n_samples, n_genes)``.
         prior_no_shrink_scale
             Prior variance for the intercept.
         prior_scale

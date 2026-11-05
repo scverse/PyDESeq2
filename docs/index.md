@@ -75,6 +75,7 @@ Quickstart <auto_examples/plot_minimal_pydeseq2_pipeline>
 :maxdepth: 2
 
 auto_examples/index
+transcript_length_normalization
 ```
 
 ```{toctree}
