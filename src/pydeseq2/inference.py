@@ -4,10 +4,6 @@ from typing import Literal
 
 import numpy as np
 import pandas as pd
-from scipy.sparse import sparray
-from scipy.sparse import spmatrix
-
-type CountMatrix = np.ndarray | spmatrix | sparray
 
 
 class Inference(ABC):
@@ -16,7 +12,7 @@ class Inference(ABC):
     @abstractmethod
     def lin_reg_mu(
         self,
-        counts: CountMatrix,
+        counts: np.ndarray,
         size_factors: np.ndarray,
         design_matrix: np.ndarray,
         min_mu: float,
@@ -47,7 +43,7 @@ class Inference(ABC):
     @abstractmethod
     def irls(
         self,
-        counts: CountMatrix,
+        counts: np.ndarray,
         size_factors: np.ndarray,
         design_matrix: np.ndarray,
         disp: np.ndarray,
@@ -106,7 +102,7 @@ class Inference(ABC):
     @abstractmethod
     def alpha_mle(
         self,
-        counts: CountMatrix,
+        counts: np.ndarray,
         design_matrix: np.ndarray,
         mu: np.ndarray,
         alpha_hat: np.ndarray,
@@ -273,7 +269,7 @@ class Inference(ABC):
     def lfc_shrink_nbinom_glm(
         self,
         design_matrix: np.ndarray,
-        counts: CountMatrix,
+        counts: np.ndarray,
         size: np.ndarray,
         offset: np.ndarray,
         prior_no_shrink_scale: float,

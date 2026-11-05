@@ -1,6 +1,4 @@
-from typing import Any
 from typing import Literal
-from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -20,22 +18,8 @@ from pydeseq2.glm import wald_test
 from pydeseq2.misc import get_num_processes
 
 
-def _column_sliceable_counts(counts: inference.CountMatrix) -> Any:
-    """Use CSC storage for efficient repeated sparse column slices."""
-    if isinstance(counts, np.ndarray):
-        return counts
-    return cast(Any, counts).tocsc(copy=False)
-
-
 def _gene_factors(factors: np.ndarray, gene_idx: int) -> np.ndarray:
     return factors[:, gene_idx] if factors.ndim == 2 else factors
-
-
-def _gene_counts(counts: Any, gene_idx: int) -> np.ndarray:
-    """Return one gene's counts as a dense sample vector."""
-    if isinstance(counts, np.ndarray):
-        return np.asarray(counts[:, gene_idx]).ravel()
-    return counts[:, [gene_idx]].toarray().ravel()
 
 
 class DefaultInference(inference.Inference):
@@ -84,12 +68,11 @@ class DefaultInference(inference.Inference):
 
     def lin_reg_mu(  # noqa: D102
         self,
-        counts: inference.CountMatrix,
+        counts: np.ndarray,
         size_factors: np.ndarray,
         design_matrix: np.ndarray,
         min_mu: float,
     ) -> np.ndarray:
-        column_counts = _column_sliceable_counts(counts)
         with parallel_backend(self._backend, inner_max_num_threads=1):
             mu_hat_ = np.array(
                 Parallel(
@@ -98,19 +81,19 @@ class DefaultInference(inference.Inference):
                     batch_size=self._batch_size,
                 )(
                     delayed(fit_lin_mu)(
-                        counts=_gene_counts(column_counts, i),
+                        counts=counts[:, i],
                         size_factors=_gene_factors(size_factors, i),
                         design_matrix=design_matrix,
                         min_mu=min_mu,
                     )
-                    for i in range(column_counts.shape[1])
+                    for i in range(counts.shape[1])
                 )
             )
         return mu_hat_.T
 
     def irls(  # noqa: D102
         self,
-        counts: inference.CountMatrix,
+        counts: np.ndarray,
         size_factors: np.ndarray,
         design_matrix: np.ndarray,
         disp: np.ndarray,
@@ -121,7 +104,6 @@ class DefaultInference(inference.Inference):
         optimizer: Literal["BFGS", "L-BFGS-B"] = "L-BFGS-B",
         maxiter: int = 250,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        column_counts = _column_sliceable_counts(counts)
         with parallel_backend(self._backend, inner_max_num_threads=1):
             res = Parallel(
                 n_jobs=self.n_cpus,
@@ -129,7 +111,7 @@ class DefaultInference(inference.Inference):
                 batch_size=self._batch_size,
             )(
                 delayed(irls_solver)(
-                    counts=_gene_counts(column_counts, i),
+                    counts=counts[:, i],
                     size_factors=_gene_factors(size_factors, i),
                     design_matrix=design_matrix,
                     disp=disp[i],
@@ -140,7 +122,7 @@ class DefaultInference(inference.Inference):
                     optimizer=optimizer,
                     maxiter=maxiter,
                 )
-                for i in range(column_counts.shape[1])
+                for i in range(counts.shape[1])
             )
         res = zip(*res, strict=False)
         MLE_lfcs_, mu_hat_, hat_diagonals_, converged_ = (np.array(m) for m in res)
@@ -154,7 +136,7 @@ class DefaultInference(inference.Inference):
 
     def alpha_mle(  # noqa: D102
         self,
-        counts: inference.CountMatrix,
+        counts: np.ndarray,
         design_matrix: np.ndarray,
         mu: np.ndarray,
         alpha_hat: np.ndarray,
@@ -165,7 +147,6 @@ class DefaultInference(inference.Inference):
         prior_reg: bool = False,
         optimizer: Literal["BFGS", "L-BFGS-B"] = "L-BFGS-B",
     ) -> tuple[np.ndarray, np.ndarray]:
-        column_counts = _column_sliceable_counts(counts)
         with parallel_backend(self._backend, inner_max_num_threads=1):
             res = Parallel(
                 n_jobs=self.n_cpus,
@@ -173,7 +154,7 @@ class DefaultInference(inference.Inference):
                 batch_size=self._batch_size,
             )(
                 delayed(fit_alpha_mle)(
-                    counts=_gene_counts(column_counts, i),
+                    counts=counts[:, i],
                     design_matrix=design_matrix,
                     mu=mu[:, i],
                     alpha_hat=alpha_hat[i],
@@ -184,7 +165,7 @@ class DefaultInference(inference.Inference):
                     prior_reg=prior_reg,
                     optimizer=optimizer,
                 )
-                for i in range(column_counts.shape[1])
+                for i in range(counts.shape[1])
             )
         res = zip(*res, strict=False)
         dispersions_, l_bfgs_b_converged_ = (np.array(m) for m in res)
@@ -262,7 +243,7 @@ class DefaultInference(inference.Inference):
     def lfc_shrink_nbinom_glm(  # noqa: D102
         self,
         design_matrix: np.ndarray,
-        counts: inference.CountMatrix,
+        counts: np.ndarray,
         size: np.ndarray,
         offset: np.ndarray,
         prior_no_shrink_scale: float,
@@ -270,8 +251,8 @@ class DefaultInference(inference.Inference):
         optimizer: str,
         shrink_index: int,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        column_counts = _column_sliceable_counts(counts)
         with parallel_backend(self._backend, inner_max_num_threads=1):
+            num_genes = counts.shape[1]
             res = Parallel(
                 n_jobs=self.n_cpus,
                 verbose=self._joblib_verbosity,
@@ -279,7 +260,7 @@ class DefaultInference(inference.Inference):
             )(
                 delayed(nbinomGLM)(
                     design_matrix=design_matrix,
-                    counts=_gene_counts(column_counts, i),
+                    counts=counts[:, i],
                     size=size[i],
                     offset=_gene_factors(offset, i),
                     prior_no_shrink_scale=prior_no_shrink_scale,
@@ -287,7 +268,7 @@ class DefaultInference(inference.Inference):
                     optimizer=optimizer,
                     shrink_index=shrink_index,
                 )
-                for i in range(column_counts.shape[1])
+                for i in range(num_genes)
             )
         res = zip(*res, strict=False)
         lfcs, inv_hessians, l_bfgs_b_converged_ = (np.array(m) for m in res)

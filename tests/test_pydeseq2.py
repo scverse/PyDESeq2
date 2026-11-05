@@ -711,7 +711,7 @@ def test_design_matrix_init(counts_df, metadata, tol=0.02):
     design_matrix = pd.DataFrame(model_matrix("~condition", metadata))
 
     # Simulate the user picking a different column name
-    design_matrix = design_matrix.rename(columns={"condition[T.B]": "condition_B"})
+    design_matrix.rename(columns={"condition[T.B]": "condition_B"}, inplace=True)
 
     # Initialize DeseqDataSet from design matrix and test results
     dds = DeseqDataSet(counts=counts_df, metadata=metadata, design=design_matrix)
