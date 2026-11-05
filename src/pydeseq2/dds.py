@@ -60,21 +60,20 @@ class DeseqDataSet(ad.AnnData):
     Parameters
     ----------
     adata
-        AnnData from which to initialize the DeseqDataSet. Must have counts ('X') and
-        sample metadata ('obs') fields. If ``None``, both ``counts`` and ``metadata``
-        arguments must be provided. Compatible pytximport objects with unscaled
+        AnnData from which to initialize the DeseqDataSet.
+        Must have counts ('X') and sample metadata ('obs') fields.
+        If ``None``, both ``counts`` and ``metadata`` arguments must be provided.
+        Compatible pytximport objects with unscaled
         estimated counts are detected from ``obsm["length"]`` and
         ``uns["counts_from_abundance"] is None``.
         Backed AnnData objects are not supported; call ``adata.to_memory()`` before
         initialization.
-
     counts
-        Raw counts. One column per gene, rows are indexed by sample barcodes.
-
+        Raw counts.
+        One column per gene, rows are indexed by sample barcodes.
     metadata
         DataFrame containing sample metadata.
         Must be indexed by sample barcodes.
-
     transcript_lengths
         Average transcript lengths for each sample and gene, typically imported from
         transcript-level quantification with unscaled estimated counts (tximport's
@@ -86,12 +85,10 @@ class DeseqDataSet(ad.AnnData):
         to the nearest integer, matching DESeq2. Explicit lengths take precedence over
         ``adata.layers["avg_tx_length"]``, which takes precedence over compatible
         pytximport fields. (default: ``None``).
-
     design
-        Model design. Can be either a pandas DataFrame representing a design matrix, or
-        a formulaic formula in the format ``'x + z'`` or ``'~x+z'``.
-        If a design matrix is provided, DeseqStats built from this DeseqDataSet will
-        only support contrasts in the form of numeric vectors.
+        Model design.
+        Can be either a pandas DataFrame representing a design matrix, or a formulaic formula in the format ``'x + z'`` or ``'~x+z'``.
+        If a design matrix is provided, DeseqStats built from this DeseqDataSet will only support contrasts in the form of numeric vectors.
         (Default: ``'~condition')``.
     design_factors
         Depecated.
@@ -160,7 +157,6 @@ class DeseqDataSet(ad.AnnData):
         Key-indexed multi-dimensional arrays aligned to dimensions of `X`, e.g. "cooks".
         Average transcript lengths and the resulting factors are stored as
         ``"avg_tx_length"`` and ``"normalization_factors"``, respectively.
-
     n_processes
         Number of cpus to use for multiprocessing.
     non_zero_idx
