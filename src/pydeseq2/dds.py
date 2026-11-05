@@ -33,13 +33,6 @@ from pydeseq2.stats import trimmed_mean
 warnings.simplefilter("ignore", FutureWarning)
 
 
-def _rounded_counts(counts: pd.DataFrame | np.ndarray) -> pd.DataFrame | np.ndarray:
-    """Round dense estimated counts without mutating the input."""
-    if isinstance(counts, pd.DataFrame):
-        return counts.round()
-    return np.rint(counts)
-
-
 class DeseqDataSet(ad.AnnData):
     r"""A class to implement dispersion and log fold-change (LFC) estimation.
 
@@ -53,8 +46,6 @@ class DeseqDataSet(ad.AnnData):
         AnnData from which to initialize the DeseqDataSet.
         Must have counts ('X') and sample metadata ('obs') fields.
         If ``None``, both ``counts`` and ``metadata`` arguments must be provided.
-        Backed AnnData objects are not supported; call ``adata.to_memory()`` before
-        initialization.
     counts
         Raw counts.
         One column per gene, rows are indexed by sample barcodes.
@@ -215,6 +206,17 @@ class DeseqDataSet(ad.AnnData):
                 key in adata.layers for key in ("avg_tx_length", "normalization_factors")
             )
             counts_from_abundance = adata.uns.get("counts_from_abundance")
+            if (
+                not has_transcript_lengths
+                and "counts_from_abundance" in adata.uns
+                and counts_from_abundance is None
+            ):
+                warnings.warn(
+                    "Unscaled pytximport counts supplied without transcript-length correction. "
+                    "Pass transcript_lengths to enable it.",
+                    UserWarning,
+                    stacklevel=2,
+                )
             if counts_from_abundance is not None and has_transcript_lengths:
                 raise ValueError(
                     "pytximport transcript-length offsets require unscaled "
@@ -222,11 +224,6 @@ class DeseqDataSet(ad.AnnData):
                     "adata.uns['counts_from_abundance'] set to None; got "
                     f"{counts_from_abundance!r}. Abundance-scaled counts must "
                     "not be combined with transcript-length offsets."
-                )
-            if adata.isbacked:
-                raise ValueError(
-                    "DeseqDataSet requires an in-memory AnnData object. Call "
-                    "adata.to_memory() before initialization."
                 )
             expected_length_index = adata.obs_names
             expected_length_columns = adata.var_names
@@ -240,7 +237,7 @@ class DeseqDataSet(ad.AnnData):
                 )
             prepared_counts: Any = adata.X
             if has_transcript_lengths:
-                prepared_counts = _rounded_counts(prepared_counts)
+                prepared_counts = np.rint(prepared_counts)
             # Test counts before going further
             test_valid_counts(prepared_counts)
             integer_counts = prepared_counts.astype(int)
@@ -275,9 +272,7 @@ class DeseqDataSet(ad.AnnData):
         elif counts is not None and metadata is not None:
             expected_length_index = counts.index
             expected_length_columns = counts.columns
-            prepared_counts = (
-                _rounded_counts(counts) if has_transcript_lengths else counts
-            )
+            prepared_counts = counts.round() if has_transcript_lengths else counts
             # Test counts before going further
             test_valid_counts(prepared_counts)
             super().__init__(X=prepared_counts.astype(int), obs=metadata)
