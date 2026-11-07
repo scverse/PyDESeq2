@@ -619,8 +619,9 @@ class DeseqDataSet(ad.AnnData):
             np.log(self.X, out=log_counts, where=self.X != 0)
             logmeans = log_counts.mean(axis=0)
 
-            # Determine which genes are usable (finite logmeans)
-            self.filtered_genes = (~np.isinf(logmeans)) & (logmeans > 0)
+            # Only exclude all-zero genes, as DESeq2's geoMeanNZ does. A gene whose
+            # positive counts are all 1 has logmeans == 0 and must be kept.
+            self.filtered_genes = np.asarray((self.X > 0).any(axis=0)).ravel()
             _control_mask &= self.filtered_genes
 
             # Calculate size factor per sample
