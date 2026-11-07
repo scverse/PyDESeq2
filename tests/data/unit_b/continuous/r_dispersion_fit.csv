@@ -1,0 +1,22 @@
+# DESeq2 1.50.2, R version 4.5.3 (2026-03-11)
+,value
+size_factor_sample1,1.76790992769401
+size_factor_sample2,0.940925679398926
+size_factor_sample3,0.787620975905986
+size_factor_sample4,0.754770218473585
+size_factor_sample5,0.952524802733859
+size_factor_sample6,0.812203306246717
+size_factor_sample7,1.09000473813323
+size_factor_sample8,0.738598714174175
+size_factor_sample9,1.11161223010267
+size_factor_sample10,1.71980223032682
+size_factor_sample11,1.56051436155828
+size_factor_sample12,1.09076631978871
+size_factor_sample13,0.838403412899837
+size_factor_sample14,0.67954380544006
+size_factor_sample15,1.61340417977751
+size_factor_sample16,0.91020177611428
+a0,0.134227014485133
+a1,4.36920504466734
+varLogDispEsts,0.628508118977055
+dispPriorVar,0.462223583227097
