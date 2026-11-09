@@ -1,6 +1,7 @@
 <img src="docs/_static/pydeseq2_logo_green.png" width="600">
 
 #
+
 [![pypi version](https://img.shields.io/pypi/v/pydeseq2)](https://pypi.org/project/pydeseq2)
 [![pypiDownloads](https://static.pepy.tech/badge/pydeseq2)](https://pepy.tech/project/pydeseq2)
 [![condaDownloads](https://img.shields.io/conda/dn/bioconda/pydeseq2?logo=Anaconda)](https://anaconda.org/bioconda/pydeseq2)
@@ -19,6 +20,7 @@ We plan to implement more in the future.
 In case there is a feature you would particularly like to be implemented, feel free to open an issue.
 
 ## Table of Contents
+
 - [PyDESeq2](#pydeseq2)
   - [Table of Contents](#table-of-contents)
   - [Installation](#installation)
@@ -150,14 +152,14 @@ In Dec 2025, the maintenance of PyDESeq2 was taken over by the scverse community
 ## References
 
 [1] Love, M. I., Huber, W., & Anders, S. (2014). "Moderated estimation of fold
-        change and dispersion for RNA-seq data with DESeq2." Genome biology, 15(12), 1-21.
-        <https://genomebiology.biomedcentral.com/articles/10.1186/s13059-014-0550-8>
+change and dispersion for RNA-seq data with DESeq2." Genome biology, 15(12), 1-21.
+<https://genomebiology.biomedcentral.com/articles/10.1186/s13059-014-0550-8>
 
 [2] Zhu, A., Ibrahim, J. G., & Love, M. I. (2019).
-        "Heavy-tailed prior distributions for sequence count data:
-        removing the noise and preserving large differences."
-        Bioinformatics, 35(12), 2084-2092.
-        <https://academic.oup.com/bioinformatics/article/35/12/2084/5159452>
+"Heavy-tailed prior distributions for sequence count data:
+removing the noise and preserving large differences."
+Bioinformatics, 35(12), 2084-2092.
+<https://academic.oup.com/bioinformatics/article/35/12/2084/5159452>
 
 ## License
 
