@@ -3,31 +3,23 @@
 PyDESeq2 requires Python 3.12 or newer.
 
 ::::{tab-set}
-
 :::{tab-item} pip
-
 ```bash
 pip install pydeseq2
 ```
-
 :::
 
 :::{tab-item} uv
-
 ```bash
 uv add pydeseq2
 ```
-
 :::
 
 :::{tab-item} conda
-
 ```bash
 conda install bioconda::pydeseq2
 ```
-
 :::
-
 ::::
 
 This installs everything needed to run a differential expression analysis: dispersion and log fold-change estimation, Wald tests, and the plots.

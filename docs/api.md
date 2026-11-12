@@ -4,20 +4,20 @@
 .. currentmodule:: pydeseq2
 
 .. autosummary::
-    :toctree: generated
-    :recursive:
+   :toctree: generated
+   :recursive:
 
-    dds.DeseqDataSet
-    ds.DeseqStats
-    inference.Inference
-    default_inference.DefaultInference
-    datasets
-    dispersions
-    distributions
-    glm
-    grid_search
-    misc
-    plotting
-    preprocessing
-    stats
+   dds.DeseqDataSet
+   ds.DeseqStats
+   inference.Inference
+   default_inference.DefaultInference
+   datasets
+   dispersions
+   distributions
+   glm
+   grid_search
+   misc
+   plotting
+   preprocessing
+   stats
 ```
