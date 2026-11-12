@@ -68,6 +68,45 @@ def test_size_factors_poscounts(counts_df, metadata):
     np.testing.assert_array_almost_equal(dds.obs["size_factors"], r_size_factors)
 
 
+def test_size_factors_poscounts_keeps_genes_with_unit_counts():
+    """Test that poscounts only excludes all-zero genes, as in DESeq2.
+
+    A gene whose positive counts are all 1 has a log geometric mean of 0 over
+    the positive counts. DESeq2's ``geoMeanNZ`` keeps it, so it must contribute
+    to the size factors. Reference values come from DESeq2 1.52.0
+    ``estimateSizeFactors(dds, type="poscounts")`` on the same counts.
+    """
+    counts = pd.DataFrame(
+        {
+            "g1": [10, 20, 30, 40],
+            "g2": [0, 15, 25, 5],
+            "g3": [7, 0, 9, 30],
+            "g4": [100, 80, 0, 60],
+            "ones": [1, 0, 1, 1],
+            "g6": [3, 9, 27, 0],
+        },
+        index=["s1", "s2", "s3", "s4"],
+    )
+    metadata = pd.DataFrame({"condition": ["A", "A", "B", "B"]}, index=counts.index)
+
+    dds = DeseqDataSet(counts=counts, metadata=metadata, design="~condition")
+    dds.fit_size_factors("poscounts")
+
+    assert dds.filtered_genes.all()
+    np.testing.assert_array_almost_equal(
+        dds.obs["size_factors"], [0.672073, 1.335417, 0.917367, 1.214572]
+    )
+
+    # Without the gene, the size factors change: it is not dropped silently.
+    dds_without = DeseqDataSet(
+        counts=counts.drop(columns="ones"), metadata=metadata, design="~condition"
+    )
+    dds_without.fit_size_factors("poscounts")
+    np.testing.assert_array_almost_equal(
+        dds_without.obs["size_factors"], [0.478107, 1.213430, 1.390664, 1.239476]
+    )
+
+
 def test_size_factors_control_genes(counts_df, metadata):
     """Test that the size_factors calculation properly takes control_genes"""
 
