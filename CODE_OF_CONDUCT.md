@@ -1,5 +1,4 @@
-Code of Conduct
----------------
+## Code of Conduct
 
 We want everyone in the community of users and contributors to PyDeseq2 to feel welcomed.
 
