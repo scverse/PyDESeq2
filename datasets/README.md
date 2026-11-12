@@ -7,6 +7,7 @@ The `tests_clinical.csv` and `test_counts.csv` files were generated using a cust
 `makeExampleDESeqDataSet` method of [DESeq2](https://bioconductor.org/packages/release/bioc/html/DESeq2.html),
 to handle several factors.
 
+
 ## Folder organisation
 
 ```
