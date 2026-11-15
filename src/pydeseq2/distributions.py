@@ -271,7 +271,7 @@ def nbinomGLM(
 
         h = np.diag(no_shrink_mask * h11 + shrink_mask * h22)
 
-        return 1 / cnst * ((design_matrix.T * frac) @ design_matrix + np.diag(h))
+        return 1 / cnst * ((design_matrix.T * frac) @ design_matrix + h)
 
     res = minimize(
         f,
