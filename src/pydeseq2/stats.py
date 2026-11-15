@@ -141,7 +141,7 @@ def fit_local_regression(
 
     Returns
     -------
-    The ``vertices``, the ``values`` and ``slopes`` of the fit at the vertices, and the ``curvature`` of a quadratic fitted to all data points, which :func:`predict_local_regression` uses.
+    The ``vertices``, the ``values`` and ``slopes`` of the fit at the vertices, and the ``curvature`` of a quadratic fitted to all data points, which :func:`pydeseq2.stats.predict_local_regression` uses.
     """
     n_neighbors = int(frac * len(features))
     fits: dict[float, tuple[float, float, float]] = {}
@@ -170,7 +170,7 @@ def fit_local_regression(
 
 
 def predict_local_regression(fit: Mapping[str, np.ndarray], features: np.ndarray) -> np.ndarray:
-    """Predict targets from a local regression curve fitted with :func:`fit_local_regression`.
+    """Predict targets from a local regression curve fitted with :func:`pydeseq2.stats.fit_local_regression`.
 
     Between the vertices, predictions are interpolated with cubic Hermite polynomials.
     Outside of the vertices, the deviation from the quadratic fitted to all data points is extrapolated linearly, as in locfit.
@@ -178,7 +178,7 @@ def predict_local_regression(fit: Mapping[str, np.ndarray], features: np.ndarray
     Parameters
     ----------
     fit
-        The output of :func:`fit_local_regression`.
+        The output of :func:`pydeseq2.stats.fit_local_regression`.
     features
         A 1D array of data points to predict the targets of.
 
