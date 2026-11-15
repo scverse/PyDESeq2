@@ -1413,17 +1413,14 @@ class DeseqDataSet(ad.AnnData):
         self.obsm["design_matrix"] = pd.DataFrame(1, index=self.obs_names, columns=["Intercept"])
 
         # Fit size factors using MLE
-        def objective(p):
+        def objective(p, counts, unscaled_mu, dispersions):
             sf = np.exp(p - np.mean(p))
-            nll = nb_nll(
-                counts=self[:, self.non_zero_genes].X,
-                mu=self[:, self.non_zero_genes].layers["_mu_hat"]
-                / self.obs["size_factors"].values[:, None]
-                * sf[:, None],
-                alpha=self.var.loc[self.non_zero_genes, "dispersions"].values,
-            )
+            mu = unscaled_mu * sf[:, None]
+            nll = nb_nll(counts=counts, mu=mu, alpha=dispersions)
             # Take out the lowest likelihoods (highest neg) from the sum
-            return np.sum(nll[nll < np.quantile(nll, quant)])
+            kept = nll < np.quantile(nll, quant)
+            gradient = ((mu - counts) / (1 + dispersions * mu))[:, kept].sum(axis=1)
+            return nll[kept].sum(), gradient - gradient.mean()
 
         for i in range(niter):
             # Estimate dispersions based on current size factors
@@ -1449,7 +1446,17 @@ class DeseqDataSet(ad.AnnData):
             old_sf = self.obs["size_factors"].copy()
 
             # Fit size factors using MLE
-            res = minimize(objective, np.log(old_sf), method="Powell")
+            res = minimize(
+                objective,
+                np.log(old_sf),
+                args=(
+                    self.X[:, self.non_zero_idx],
+                    self.layers["_mu_hat"][:, self.non_zero_idx] / old_sf.to_numpy()[:, None],
+                    self.var.loc[self.var["non_zero"], "dispersions"].to_numpy(),
+                ),
+                jac=True,
+                method="L-BFGS-B",
+            )
 
             self.obs["size_factors"] = np.exp(res.x - np.mean(res.x))
 
