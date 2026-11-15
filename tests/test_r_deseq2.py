@@ -54,9 +54,7 @@ def run_r_deseq2(counts_df, metadata, design, contrast, deseq_kwargs, results_kw
     """
     col_data = ro.DataFrame(
         {
-            name: ro.FloatVector(col)
-            if pd.api.types.is_numeric_dtype(col)
-            else ro.FactorVector(ro.StrVector(col))
+            name: ro.FloatVector(col) if pd.api.types.is_numeric_dtype(col) else ro.FactorVector(ro.StrVector(col))
             for name, col in metadata.items()
         }
     )
@@ -64,22 +62,16 @@ def run_r_deseq2(counts_df, metadata, design, contrast, deseq_kwargs, results_kw
     counts = ro.r["matrix"](
         ro.IntVector(counts_df.to_numpy().ravel()),
         nrow=counts_df.shape[1],
-        dimnames=ro.r["list"](
-            ro.StrVector(counts_df.columns), ro.StrVector(counts_df.index)
-        ),
+        dimnames=ro.r["list"](ro.StrVector(counts_df.columns), ro.StrVector(counts_df.index)),
     )
-    dds = r_deseq2.DESeqDataSetFromMatrix(
-        countData=counts, colData=col_data, design=ro.Formula(design)
-    )
+    dds = r_deseq2.DESeqDataSetFromMatrix(countData=counts, colData=col_data, design=ro.Formula(design))
     dds = r_deseq2.DESeq(dds, quiet=True, **deseq_kwargs)
     if isinstance(contrast, str):
         res = r_deseq2.results(dds, name=contrast, **results_kwargs)
     else:
         res = r_deseq2.results(dds, contrast=ro.StrVector(contrast), **results_kwargs)
     res = ro.r["as.data.frame"](res)
-    return pd.DataFrame(
-        {name: np.asarray(col) for name, col in res.items()}, index=list(res.rownames)
-    )
+    return pd.DataFrame({name: np.asarray(col) for name, col in res.items()}, index=list(res.rownames))
 
 
 @pytest.mark.parametrize(
@@ -121,8 +113,6 @@ def test_options(dds_kwargs, ds_kwargs, deseq_kwargs, results_kwargs):
     design, contrast = "~condition", ["condition", "B", "A"]
 
     res = run_pydeseq2(counts_df, metadata, design, contrast, dds_kwargs, ds_kwargs)
-    r_res = run_r_deseq2(
-        counts_df, metadata, design, contrast, deseq_kwargs, results_kwargs
-    )
+    r_res = run_r_deseq2(counts_df, metadata, design, contrast, deseq_kwargs, results_kwargs)
 
     assert_res_almost_equal(res, r_res)
