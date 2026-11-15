@@ -1,9 +1,11 @@
 """Robust summary statistics and smoothing."""
 
+from collections.abc import Mapping
 from math import ceil
 from math import floor
 
 import numpy as np
+from scipy.interpolate import CubicHermiteSpline
 from scipy.stats import norm  # type: ignore
 
 
@@ -113,3 +115,80 @@ def lowess(features: np.ndarray, targets: np.ndarray, frac: float = 2.0 / 3.0, i
         delta = (1 - delta**2) ** 2
 
     return yest
+
+
+def fit_local_regression(
+    features: np.ndarray, targets: np.ndarray, weights: np.ndarray, frac: float = 0.7, cut: float = 0.8
+) -> dict[str, np.ndarray]:
+    """Fit a local quadratic regression curve, as the locfit R package does by default.
+
+    The curve is fitted at vertices, each time with a weighted quadratic regression centered on the vertex.
+    The regression uses tricube kernel weights whose bandwidth is the distance of the vertex to its ``frac * n``-th nearest data point.
+    Vertices are added by bisecting the range of the features, until neighbouring vertices are closer than ``cut`` times their smallest bandwidth.
+
+    Parameters
+    ----------
+    features
+        A 1D array of data points.
+    targets
+        A 1D array of target values (with the same shape as features).
+    weights
+        A 1D array of prior weights (with the same shape as features).
+    frac
+        The fraction of the data used when fitting at each vertex. (default: ``0.7``).
+    cut
+        The largest distance between neighbouring vertices, relative to their smallest bandwidth. (default: ``0.8``).
+
+    Returns
+    -------
+    The ``vertices``, the ``values`` and ``slopes`` of the fit at the vertices, and the ``curvature`` of a quadratic fitted to all data points, which :func:`predict_local_regression` uses.
+    """
+    n_neighbors = int(frac * len(features))
+    fits: dict[float, tuple[float, float, float]] = {}
+
+    def bandwidth(vertex: float) -> float:
+        if vertex not in fits:
+            distances = np.abs(features - vertex)
+            width = np.partition(distances, n_neighbors - 1)[n_neighbors - 1]
+            kernel = np.sqrt(weights * np.clip(1 - (distances / width) ** 3, 0, None) ** 3)
+            design = np.vander(features - vertex, 3, increasing=True)
+            beta = np.linalg.lstsq(design * kernel[:, None], targets * kernel, rcond=None)[0]
+            fits[vertex] = (beta[0], beta[1], width)
+        return fits[vertex][2]
+
+    def grow(left: float, right: float) -> None:
+        if right - left > cut * min(bandwidth(left), bandwidth(right)):
+            middle = (left + right) / 2
+            grow(left, middle)
+            grow(middle, right)
+
+    grow(features.min(), features.max())
+    vertices = np.array(sorted(fits))
+    values, slopes, _ = np.array([fits[vertex] for vertex in vertices]).T
+    curvature = np.polynomial.polynomial.polyfit(features, targets, 2, w=np.sqrt(weights))[2]
+    return {"vertices": vertices, "values": values, "slopes": slopes, "curvature": curvature}
+
+
+def predict_local_regression(fit: Mapping[str, np.ndarray], features: np.ndarray) -> np.ndarray:
+    """Predict targets from a local regression curve fitted with :func:`fit_local_regression`.
+
+    Between the vertices, predictions are interpolated with cubic Hermite polynomials.
+    Outside of the vertices, the deviation from the quadratic fitted to all data points is extrapolated linearly, as in locfit.
+
+    Parameters
+    ----------
+    fit
+        The output of :func:`fit_local_regression`.
+    features
+        A 1D array of data points to predict the targets of.
+
+    Returns
+    -------
+    Predicted values of targets.
+    """
+    vertices, values, slopes = fit["vertices"], fit["values"], fit["slopes"]
+    predictions = CubicHermiteSpline(vertices, values, slopes)(features)
+    for edge, outside in ((0, features < vertices[0]), (-1, features > vertices[-1])):
+        distances = features[outside] - vertices[edge]
+        predictions[outside] = values[edge] + slopes[edge] * distances + fit["curvature"] * distances**2
+    return predictions

@@ -102,6 +102,7 @@ def test_design(dataset, design, contrast):
     ("dds_kwargs", "ds_kwargs", "deseq_kwargs", "results_kwargs"),
     [
         ({"fit_type": "mean"}, {}, {"fitType": "mean"}, {}),
+        ({"fit_type": "local"}, {}, {"fitType": "local"}, {}),
         ({"size_factors_fit_type": "poscounts"}, {}, {"sfType": "poscounts"}, {}),
         ({}, {"independent_filter": False}, {}, {"independentFiltering": False}),
         ({}, {"alpha": 0.01}, {}, {"alpha": 0.01}),

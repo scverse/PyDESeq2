@@ -12,3 +12,6 @@ in `/datasets/synthetic/`, respectively using `~condition` and `~condition + gro
 - `r_test_size_factors.csv` contains DESeq2's `estimateSizeFactors` output,
 - `r_vst.csv` contains DESeq2's `varianceStabilizingTransformation` output with `blind=TRUE` and `fitType="parametric"`,
 - `r_vst_with_design.csv` contains DESeq2's `varianceStabilizingTransformation` output with `blind=FALSE` and `fitType="parametric"`.
+
+The files `r_test_res_local_curve.csv` and `r_local_vst.csv` of `single_factor` contain DESeq2’s `results` and blind `varianceStabilizingTransformation` outputs with `fitType="local"`.
+They come from DESeq2 v1.50.2.

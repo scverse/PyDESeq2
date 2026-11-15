@@ -147,13 +147,14 @@ def test_deseq_independent_filtering_parametric_fit(counts_df, metadata, tol=0.0
     assert_res_almost_equal(ds.results_df, r_res, tol)
 
 
-def test_deseq_independent_filtering_mean_fit(counts_df, metadata, tol=0.02):
-    """Test that the outputs of the DESeq2 function match those of the original R package, up to a tolerance in relative error, with a mean fit."""
+@pytest.mark.parametrize("fit_type", ["mean", "local"])
+def test_deseq_independent_filtering_curve_fit(fit_type, counts_df, metadata, tol=0.02):
+    """Test that the outputs of the DESeq2 function match those of the original R package, up to a tolerance in relative error, with a mean or a local fit."""
 
     test_path = str(Path(os.path.realpath(tests.__file__)).parent.resolve())
 
     r_res = pd.read_csv(
-        os.path.join(test_path, "data/single_factor/r_test_res_mean_curve.csv"),
+        os.path.join(test_path, f"data/single_factor/r_test_res_{fit_type}_curve.csv"),
         index_col=0,
     )
 
@@ -161,7 +162,7 @@ def test_deseq_independent_filtering_mean_fit(counts_df, metadata, tol=0.02):
         counts=counts_df,
         metadata=metadata,
         design="~condition",
-        fit_type="mean",
+        fit_type=fit_type,
     )
     dds.deseq2()
 
@@ -716,18 +717,19 @@ def test_vst(counts_df, metadata, tol=0.02):
     assert (np.abs(r_vst_with_design - dds.layers["vst_counts"]) / r_vst_with_design).max().max() < tol
 
 
-def test_mean_vst(counts_df, metadata, tol=0.02):
+@pytest.mark.parametrize("fit_type", ["mean", "local"])
+def test_curve_fit_vst(fit_type, counts_df, metadata, tol=0.02):
     """
-    Test the output of VST with ``fitType="mean"`` compared with DESeq2.
+    Test the output of VST with ``fitType="mean"`` or ``fitType="local"`` compared with DESeq2.
     """
     # Load R data
     test_path = str(Path(os.path.realpath(tests.__file__)).parent.resolve())
 
-    r_vst = pd.read_csv(os.path.join(test_path, "data/single_factor/r_mean_vst.csv"), index_col=0).T
+    r_vst = pd.read_csv(os.path.join(test_path, f"data/single_factor/r_{fit_type}_vst.csv"), index_col=0).T
 
     # Test blind design
     dds = DeseqDataSet(counts=counts_df, metadata=metadata, design="~condition")
-    dds.vst(use_design=False, fit_type="mean")
+    dds.vst(use_design=False, fit_type=fit_type)
     assert (np.abs(r_vst - dds.layers["vst_counts"]) / r_vst).max().max() < tol
 
 
@@ -815,6 +817,9 @@ def test_vst_transform(train_dds, test_counts):
         ("parametric", "mean"),
         ("parametric", "parametric"),
         ("mean", "mean"),
+        ("local", "parametric"),
+        ("parametric", "local"),
+        ("local", "local"),
     ],
 )
 def test_vst_blind(train_counts, train_metadata, dea_fit_type, vst_fit_type):
@@ -826,10 +831,7 @@ def test_vst_blind(train_counts, train_metadata, dea_fit_type, vst_fit_type):
         fit_type=dea_fit_type,
     )
     train_dds.deseq2()
-    if dea_fit_type == "parametric":
-        assert "trend_coeffs" in train_dds.uns
-    else:
-        assert "mean_disp" in train_dds.uns
+    assert {"parametric": "trend_coeffs", "mean": "mean_disp", "local": "local_trend"}[dea_fit_type] in train_dds.uns
     assert "normed_counts" in train_dds.layers
     assert "size_factors" in train_dds.obs
     assert train_dds.fit_type == dea_fit_type

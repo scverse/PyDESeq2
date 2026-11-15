@@ -117,6 +117,8 @@ dds.var["genewise_dispersions"]
 # %%
 # Fit dispersion trend coefficients
 # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+# The ``fit_type`` argument of ``DeseqDataSet`` selects the trend.
+# It is ``"parametric"`` by default, and can also be ``"mean"`` or ``"local"``, a local regression of log dispersions over log means.
 
 dds.fit_dispersion_trend()
 dds.uns["trend_coeffs"]
