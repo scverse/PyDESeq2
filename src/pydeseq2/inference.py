@@ -151,9 +151,7 @@ class Inference(ABC):
         ridge_factor: np.ndarray,
         contrast: np.ndarray,
         lfc_null: np.ndarray,
-        alt_hypothesis: (
-            Literal["greaterAbs", "lessAbs", "greater", "less"] | None
-        ) = None,
+        alt_hypothesis: (Literal["greaterAbs", "lessAbs", "greater", "less"] | None) = None,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Run Wald test for differential expression.
 
@@ -189,9 +187,7 @@ class Inference(ABC):
         """
 
     @abstractmethod
-    def fit_rough_dispersions(
-        self, normed_counts: np.ndarray, design_matrix: np.ndarray
-    ) -> np.ndarray:
+    def fit_rough_dispersions(self, normed_counts: np.ndarray, design_matrix: np.ndarray) -> np.ndarray:
         """'Rough dispersion' estimates from linear model, as per the R code.
 
         Used as initial estimates in :meth:`DeseqDataSet.fit_genewise_dispersions() <pydeseq2.dds.DeseqDataSet.fit_genewise_dispersions>`.
@@ -212,9 +208,7 @@ class Inference(ABC):
         """
 
     @abstractmethod
-    def fit_moments_dispersions(
-        self, normed_counts: np.ndarray, size_factors: np.ndarray
-    ) -> np.ndarray:
+    def fit_moments_dispersions(self, normed_counts: np.ndarray, size_factors: np.ndarray) -> np.ndarray:
         """Dispersion estimates based on moments, as per the R code.
 
         Used as initial estimates in :meth:`DeseqDataSet.fit_genewise_dispersions() <pydeseq2.dds.DeseqDataSet.fit_genewise_dispersions>`.

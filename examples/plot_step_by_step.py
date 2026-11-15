@@ -127,9 +127,7 @@ dds.var["fitted_dispersions"]
 # ^^^^^^^^^^^^^^^^^
 
 dds.fit_dispersion_prior()
-print(
-    f"logres_prior={dds.uns['_squared_logres']}, sigma_prior={dds.uns['prior_disp_var']}"
-)
+print(f"logres_prior={dds.uns['_squared_logres']}, sigma_prior={dds.uns['prior_disp_var']}")
 
 # %%
 # MAP Dispersions
