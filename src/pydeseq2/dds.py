@@ -51,6 +51,7 @@ class DeseqDataSet(ad.AnnData):
     counts
         Raw counts.
         One column per gene, rows are indexed by sample barcodes.
+        Gene names must be unique.
     metadata
         DataFrame containing sample metadata.
         Must be indexed by sample barcodes.
@@ -207,6 +208,9 @@ class DeseqDataSet(ad.AnnData):
             super().__init__(X=counts.astype(counts_dtype), obs=metadata)
         else:
             raise ValueError("Either adata or both counts and metadata arguments must be provided.")
+
+        if not self.var_names.is_unique:
+            raise ValueError("Gene names must be unique. Rename or aggregate the duplicated genes.")
 
         self.fit_type = fit_type
         self.design = design

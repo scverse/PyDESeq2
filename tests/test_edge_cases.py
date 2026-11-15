@@ -141,6 +141,16 @@ def test_empty_counts(n_samples, n_genes):
         DeseqDataSet(counts=counts_df, metadata=metadata, design="~condition")
 
 
+def test_duplicated_gene_names():
+    """Test that a ValueError is thrown when gene names are duplicated."""
+    counts_df = pd.DataFrame([[0, 4], [1, 12]], index=["sample1", "sample2"], columns=["gene1", "gene1"])
+    metadata = pd.DataFrame({"condition": [0, 1]}, index=["sample1", "sample2"])
+
+    with pytest.warns(UserWarning, match="Variable names are not unique"):
+        with pytest.raises(ValueError, match="Gene names must be unique"):
+            DeseqDataSet(counts=counts_df, metadata=metadata, design="~condition")
+
+
 def test_numeric_counts():
     """Test that a ValueError is thrown when the count matrix contains non-numeric values."""
     counts_df = pd.DataFrame({"gene1": [0, "a"], "gene2": [4, 12]}, index=["sample1", "sample2"])
