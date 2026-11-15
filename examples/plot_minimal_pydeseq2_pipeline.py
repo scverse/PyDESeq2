@@ -17,6 +17,8 @@ We start by importing required packages and setting up an optional path to save 
 import os
 import pickle as pkl
 
+import matplotlib.pyplot as plt
+
 from pydeseq2.datasets import load_example_data
 from pydeseq2.dds import DeseqDataSet
 from pydeseq2.default_inference import DefaultInference
@@ -170,6 +172,9 @@ dds = DeseqDataSet(
 # we may run the :meth:`deseq2() <DeseqDataSet.deseq2>` method
 # to fit dispersions and LFCs.
 #
+# .. note::
+#   PyDESeq2 logs its progress through the shared scverse logger, which only shows warnings by default.
+#   To follow each step, set ``scverse_misc.logging.config.verbosity = "info"``.
 #
 
 
@@ -261,6 +266,7 @@ if SAVE:
 # %%
 # The results are then stored in the ``results_df`` attribute (``ds.results_df``).
 
+
 # %%
 # Optional: threshold-based tests
 # """"""""""""""""""""""""""""""""
@@ -273,6 +279,15 @@ if SAVE:
 
 ds.summary(lfc_null=0.1, alt_hypothesis="greaterAbs")
 ds.plot_MA(s=20)
+
+# %%
+# To customize the figure, e.g. to set the axis limits, pass matplotlib axes to :meth:`plot_MA() <DeseqStats.plot_MA>`.
+# The same goes for :meth:`plot_dispersions() <pydeseq2.dds.DeseqDataSet.plot_dispersions>`.
+
+fig, ax = plt.subplots()
+ds.plot_MA(s=20, ax=ax)
+ax.set_ylim(-1, 1)
+plt.show()
 
 # %%
 # LFC shrinkage
@@ -289,6 +304,7 @@ ds.lfc_shrink(coeff="condition[T.B]")
 if SAVE:
     with open(os.path.join(OUTPUT_PATH, "shrunk_results.pkl"), "wb") as f:
         pkl.dump(ds, f)
+
 
 # %%
 # .. note::

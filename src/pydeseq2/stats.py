@@ -58,9 +58,7 @@ def mean_absolute_deviation(x: np.ndarray) -> float:
     return np.median(np.abs(x - center)) / norm.ppf(0.75)
 
 
-def lowess(
-    features: np.ndarray, targets: np.ndarray, frac: float = 2.0 / 3.0, iter: int = 3
-):
+def lowess(features: np.ndarray, targets: np.ndarray, frac: float = 2.0 / 3.0, iter: int = 3):
     """Run lowess smoothing: Robust locally weighted regression.
 
     The lowess function fits a nonparametric regression curve to a scatterplot.
@@ -88,21 +86,15 @@ def lowess(
     """
     n = len(features)
     r = int(ceil(frac * n))
-    h = np.maximum(
-        np.array([np.sort(np.abs(features - features[i]))[r] for i in range(n)]), 1e-12
-    )
-    w = np.clip(
-        np.abs(np.nan_to_num((features[:, None] - features[None, :]) / h)), 0.0, 1.0
-    )
+    h = np.maximum(np.array([np.sort(np.abs(features - features[i]))[r] for i in range(n)]), 1e-12)
+    w = np.clip(np.abs(np.nan_to_num((features[:, None] - features[None, :]) / h)), 0.0, 1.0)
     w = (1 - w**3) ** 3
     yest = np.zeros(n)
     delta = np.ones(n)
     for _ in range(iter):
         for i in range(n):
             weights = delta * w[:, i]
-            b = np.array(
-                [np.sum(weights * targets), np.sum(weights * targets * features)]
-            )
+            b = np.array([np.sum(weights * targets), np.sum(weights * targets * features)])
             A = np.array(
                 [
                     [np.sum(weights), np.sum(weights * features)],

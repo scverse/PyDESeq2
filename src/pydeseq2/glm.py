@@ -106,22 +106,14 @@ def irls_solver(
 
             def df(beta: np.ndarray) -> np.ndarray:
                 mu_ = np.maximum(size_factors * np.exp(X @ beta), min_mu)
-                return (
-                    -X.T @ counts
-                    + ((1 / disp + counts) * mu_ / (1 / disp + mu_)) @ X
-                    + ridge_factor @ beta
-                )
+                return -X.T @ counts + ((1 / disp + counts) * mu_ / (1 / disp + mu_)) @ X + ridge_factor @ beta
 
             res = minimize(
                 f,
                 beta_init,
                 jac=df,
                 method=optimizer,
-                bounds=(
-                    [(min_beta, max_beta)] * num_vars
-                    if optimizer == "L-BFGS-B"
-                    else None
-                ),
+                bounds=([(min_beta, max_beta)] * num_vars if optimizer == "L-BFGS-B" else None),
             )
 
             beta = res.x
@@ -151,9 +143,7 @@ def irls_solver(
     # This is numerically equivalent to the more expensive calculation
     # np.diag(X @ (X^T @ np.inv(X^T @ np.diag(W) @ X + lambda) @ X^T)
     W = mu / (1.0 + mu * disp)
-    H = np.einsum(
-        "ij,jk,ki->i", X, np.linalg.inv((X.T * W[None, :]) @ X + ridge_factor), X.T
-    )
+    H = np.einsum("ij,jk,ki->i", X, np.linalg.inv((X.T * W[None, :]) @ X + ridge_factor), X.T)
 
     W_sq = np.sqrt(W)
     H = W_sq * H * W_sq

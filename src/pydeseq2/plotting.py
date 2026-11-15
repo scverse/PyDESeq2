@@ -5,6 +5,7 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
+from matplotlib.axes import Axes
 
 
 def make_scatter(
@@ -13,6 +14,7 @@ def make_scatter(
     x_val: np.ndarray,
     log: bool = True,
     save_path: str | None = None,
+    ax: Axes | None = None,
     **kwargs,
 ) -> None:
     """
@@ -33,6 +35,9 @@ def make_scatter(
     save_path
         The path where to save the plot.
         If left None, the plot won't be saved (``default=None``).
+    ax
+        The axes to plot on.
+        If left None, a new figure is created and shown (``default=None``).
     **kwargs
         Matplotlib keyword arguments for the scatter plot.
     """
@@ -44,12 +49,14 @@ def make_scatter(
 
     # Standardizing font; init plot
     plt.rcParams.update({"font.size": 10})
-    fig, ax = plt.subplots(dpi=600)
+    show = ax is None
+    if ax is None:
+        _, ax = plt.subplots(dpi=600, layout="tight")
 
     # log scale axes
     if log is True:
-        plt.yscale("log")
-        plt.xscale("log")
+        ax.set_yscale("log")
+        ax.set_xscale("log")
 
     # scale axes according to data spread
     ax.set_adjustable("datalim")
@@ -60,16 +67,16 @@ def make_scatter(
 
     # create scatter plot per trace
     for disp, color in list(zip(disps, colors, strict=False)):
-        plt.scatter(x=x_val, y=disp, c=color, **kwargs)
+        ax.scatter(x=x_val, y=disp, c=color, **kwargs)
 
     # label legend + axes
-    plt.legend(legend_labels, loc="best")
-    plt.xlabel("mean of normalized counts")
-    plt.ylabel("dispersion")
-    plt.tight_layout()
+    ax.legend(legend_labels, loc="best")
+    ax.set_xlabel("mean of normalized counts")
+    ax.set_ylabel("dispersion")
     if save_path is not None:
-        plt.savefig(save_path, bbox_inches="tight")
-    plt.show()
+        ax.figure.savefig(save_path, bbox_inches="tight")
+    if show:
+        plt.show()
 
 
 def make_MA_plot(
@@ -79,6 +86,7 @@ def make_MA_plot(
     save_path: str | None = None,
     lfc_null: float = 0,
     alt_hypothesis: Literal["greaterAbs", "lessAbs", "greater", "less"] | None = None,
+    ax: Axes | None = None,
     **kwargs,
 ) -> None:
     """
@@ -102,18 +110,22 @@ def make_MA_plot(
         The (log2) log fold change under the null hypothesis. (default: ``0``).
     alt_hypothesis
         The alternative hypothesis for computing wald p-values. (default: ``None``).
+    ax
+        The axes to plot on.
+        If left None, a new figure is created (``default=None``).
     **kwargs
         Matplotlib keyword arguments for the scatter plot.
     """
     colors = results_df["padj"].apply(lambda x: "darkred" if x < padj_thresh else "gray")
 
-    fig, ax = plt.subplots(dpi=600)
+    if ax is None:
+        _, ax = plt.subplots(dpi=600, layout="tight")
 
     # Set default alpha and s parameters, if not already specified
     kwargs.setdefault("alpha", 0.5)
     kwargs.setdefault("s", 0.2)
 
-    plt.scatter(
+    ax.scatter(
         x=results_df["baseMean"],
         y=results_df["log2FoldChange"],
         c=colors,
@@ -123,15 +135,14 @@ def make_MA_plot(
     ax.set_adjustable("datalim")
 
     if log is True:
-        plt.xscale("log")
+        ax.set_xscale("log")
 
-    plt.xlabel("mean of normalized counts")
-    plt.ylabel("log2 fold change")
+    ax.set_xlabel("mean of normalized counts")
+    ax.set_ylabel("log2 fold change")
 
-    plt.axhline(lfc_null, color="red", alpha=0.5, linestyle="--", zorder=3)
+    ax.axhline(lfc_null, color="red", alpha=0.5, linestyle="--", zorder=3)
     if alt_hypothesis and alt_hypothesis in ["greaterAbs", "lessAbs"]:
-        plt.axhline(-lfc_null, color="red", alpha=0.5, linestyle="--", zorder=3)
-    plt.tight_layout()
+        ax.axhline(-lfc_null, color="red", alpha=0.5, linestyle="--", zorder=3)
 
     if save_path is not None:
-        plt.savefig(save_path, bbox_inches="tight")
+        ax.figure.savefig(save_path, bbox_inches="tight")
