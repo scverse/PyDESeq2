@@ -271,7 +271,7 @@ def nbinomGLM(
 
         h = np.diag(no_shrink_mask * h11 + shrink_mask * h22)
 
-        return 1 / cnst * ((design_matrix.T * frac) @ design_matrix + np.diag(h))
+        return 1 / cnst * ((design_matrix.T * frac) @ design_matrix + h)
 
     res = minimize(
         f,
@@ -302,6 +302,7 @@ def nbinomGLM(
             grid_length=60,
             min_beta=-30,
             max_beta=30,
+            shrink_index=shrink_index,
         )
 
     inv_hessian = np.linalg.inv(ddf(beta, 1))
