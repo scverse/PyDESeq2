@@ -34,3 +34,15 @@ def test_shrinkage_covariance_matches_objective_curvature(width, shrink_index):
 
     np.testing.assert_allclose(np.linalg.inv(covariance), hessian, rtol=1e-5, atol=1e-5)
     np.testing.assert_allclose(covariance, covariance.T, rtol=1e-12, atol=1e-12)
+
+
+def test_nbinom_glm_large_covariate():
+    """Test that the shrinkage fit does not overflow when a covariate takes large values."""
+    rng = np.random.default_rng(0)
+    design = np.column_stack([np.ones(20), rng.normal(1000, 300, 20)])
+    counts = rng.poisson(50, 20)
+
+    beta, inv_hessian, _ = nbinomGLM(design, counts, 10.0, np.zeros(20), 15.0, 1.0)
+
+    assert np.isfinite(beta).all()
+    assert np.isfinite(inv_hessian).all()
