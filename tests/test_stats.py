@@ -6,6 +6,8 @@ import pytest
 
 from pydeseq2.datasets import load_example_data
 from pydeseq2.distributions import nb_nll
+from pydeseq2.stats import fit_local_regression
+from pydeseq2.stats import predict_local_regression
 
 
 @pytest.mark.parametrize("mu, alpha", [(10, 0.5), (10, 0.1), (3, 0.5), (9, 0.05)])
@@ -52,3 +54,22 @@ def test_rtd_example_data_loading(mocked_function, modality, mocked_dir_flag):
         dataset="synthetic",
         debug=False,
     )
+
+
+def test_local_regression():
+    """Test that the local regression matches locfit 1.5.9.12, between and outside of the data points."""
+    features = np.linspace(0, 10, 40)
+    fit = fit_local_regression(features, np.sin(features) + 0.1 * features**2, weights=1 + features)
+
+    predictions = predict_local_regression(fit, np.array([-2, 0, 1.3, 5, 8.7, 10, 12]))
+
+    r_predictions = [
+        1.405753995483,
+        0.848572230442,
+        0.815232883801,
+        1.684024627340,
+        8.104562112241,
+        9.499407923993,
+        11.652760083406,
+    ]
+    np.testing.assert_allclose(predictions, r_predictions)

@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 from formulaic_contrasts import FormulaicContrasts  # type: ignore[import-untyped]
 from matplotlib.axes import Axes
+from scipy.interpolate import make_interp_spline
 from scipy.optimize import minimize
 from scipy.special import polygamma  # type: ignore
 from scipy.stats import f  # type: ignore
@@ -27,7 +28,9 @@ from pydeseq2.misc import test_valid_counts
 from pydeseq2.plotting import make_scatter
 from pydeseq2.preprocessing import deseq2_norm_fit
 from pydeseq2.preprocessing import deseq2_norm_transform
+from pydeseq2.stats import fit_local_regression
 from pydeseq2.stats import mean_absolute_deviation
+from pydeseq2.stats import predict_local_regression
 from pydeseq2.stats import trimmed_mean
 
 # Ignore AnnData's FutureWarning about implicit data conversion.
@@ -70,7 +73,7 @@ class DeseqDataSet(ad.AnnData):
     ref_level
         Deprecated.
     fit_type
-        Either ``"parametric"`` or ``"mean"`` for the type of fitting of dispersions to the mean intensity. ``"parametric"``: fit a dispersion-mean relation via a robust gamma-family GLM. ``"mean"``: use the mean of gene-wise dispersion estimates.
+        Either ``"parametric"``, ``"mean"`` or ``"local"`` for the type of fitting of dispersions to the mean intensity. ``"parametric"``: fit a dispersion-mean relation via a robust gamma-family GLM. ``"mean"``: use the mean of gene-wise dispersion estimates. ``"local"``: fit a local regression of log dispersions over log means.
         Will set the fit type for the DEA and the vst transformation.
         If needed, it can be set separately for each method.(default: ``"parametric"``).
     size_factors_fit_type
@@ -174,7 +177,7 @@ class DeseqDataSet(ad.AnnData):
         design_factors: str | list[str] | None = None,
         continuous_factors: list[str] | None = None,
         ref_level: list[str] | None = None,
-        fit_type: Literal["parametric", "mean"] = "parametric",
+        fit_type: Literal["parametric", "mean", "local"] = "parametric",
         size_factors_fit_type: Literal["ratio", "poscounts", "iterative"] = "ratio",
         control_genes: np.ndarray | list[str] | list[int] | pd.Index | None = None,
         min_mu: float = 0.5,
@@ -300,7 +303,7 @@ class DeseqDataSet(ad.AnnData):
     def vst(
         self,
         use_design: bool = False,
-        fit_type: Literal["parametric", "mean"] | None = None,
+        fit_type: Literal["parametric", "mean", "local"] | None = None,
     ) -> None:
         """Fit a variance stabilizing transformation, and apply it to normalized counts.
 
@@ -317,6 +320,7 @@ class DeseqDataSet(ad.AnnData):
             * ``"parametric"``: fit a dispersion-mean relation via a robust
               gamma-family GLM.
             * ``"mean"``: use the mean of gene-wise dispersion estimates.
+            * ``"local"``: fit a local regression of log dispersions over log means.
 
             (default: ``None``).
         """
@@ -346,7 +350,7 @@ class DeseqDataSet(ad.AnnData):
         use_design
             Whether to use the full design matrix to fit dispersions and the trend curve.
             If False, only an intercept is used.
-            Only useful if ``fit_type = "parametric"`. (default: ``False``).
+            Only useful if ``fit_type`` is ``"parametric"`` or ``"local"``. (default: ``False``).
         """
         # Start by fitting median-of-ratio size factors if not already present,
         # or if they were computed iteratively
@@ -359,9 +363,11 @@ class DeseqDataSet(ad.AnnData):
         if use_design:
             if self.vst_fit_type == "parametric":
                 self._fit_parametric_dispersion_trend(vst=True)
+            elif self.vst_fit_type == "local":
+                self._fit_local_dispersion_trend(vst=True)
             else:
                 warnings.warn(
-                    "use_design=True is only useful when fit_type='parametric'. ",
+                    "use_design=True is only useful when fit_type is 'parametric' or 'local'. ",
                     UserWarning,
                     stacklevel=2,
                 )
@@ -375,6 +381,8 @@ class DeseqDataSet(ad.AnnData):
             self.fit_genewise_dispersions(vst=True)
             if self.vst_fit_type == "parametric":
                 self._fit_parametric_dispersion_trend(vst=True)
+            elif self.vst_fit_type == "local":
+                self._fit_local_dispersion_trend(vst=True)
 
             # Restore the design matrix and free buffer
             self.obsm["design_matrix"] = self.obsm["design_matrix_buffer"].copy()
@@ -440,10 +448,14 @@ class DeseqDataSet(ad.AnnData):
             use_for_mean = gene_dispersions > 10 * self.min_disp
             mean_disp = trim_mean(gene_dispersions[use_for_mean], proportiontocut=0.001)
             return (2 * np.arcsinh(np.sqrt(mean_disp * normed_counts)) - np.log(mean_disp) - np.log(4)) / np.log(2)
+        elif self.vst_fit_type == "local":
+            return self._vst_transform_local(normed_counts)
         else:
-            raise NotImplementedError(f"Found fit_type '{self.vst_fit_type}'. Expected 'parametric' or 'mean'.")
+            raise NotImplementedError(
+                f"Found fit_type '{self.vst_fit_type}'. Expected 'parametric', 'mean' or 'local'."
+            )
 
-    def deseq2(self, fit_type: Literal["parametric", "mean"] | None = None) -> None:
+    def deseq2(self, fit_type: Literal["parametric", "mean", "local"] | None = None) -> None:
         """Perform dispersion and log fold-change (LFC) estimation.
 
         Wrapper for the first part of the PyDESeq2 pipeline.
@@ -452,7 +464,7 @@ class DeseqDataSet(ad.AnnData):
         Parameters
         ----------
         fit_type
-            Either None, ``"parametric"`` or ``"mean"`` for the type of fitting of dispersions to the mean intensity.``"parametric"``: fit a dispersion-mean relation via a robust gamma-family GLM. ``"mean"``: use the mean of gene-wise dispersion estimates.
+            Either None, ``"parametric"``, ``"mean"`` or ``"local"`` for the type of fitting of dispersions to the mean intensity.``"parametric"``: fit a dispersion-mean relation via a robust gamma-family GLM. ``"mean"``: use the mean of gene-wise dispersion estimates. ``"local"``: fit a local regression of log dispersions over log means.
 
             If None, the fit_type provided at class initialization is used. (default: ``None``).
         """
@@ -737,8 +749,12 @@ class DeseqDataSet(ad.AnnData):
             self._fit_parametric_dispersion_trend(vst)
         elif fit_type == "mean":
             self._fit_mean_dispersion_trend(vst)
+        elif fit_type == "local":
+            self._fit_local_dispersion_trend(vst)
         else:
-            raise NotImplementedError(f"Expected 'parametric' or 'mean' trend curve fit types, received {fit_type}")
+            raise NotImplementedError(
+                f"Expected 'parametric', 'mean' or 'local' trend curve fit types, received {fit_type}"
+            )
         end = time.time()
 
         if not self.quiet:
@@ -750,6 +766,8 @@ class DeseqDataSet(ad.AnnData):
             return dispersion_trend(x, self.uns["trend_coeffs"])
         elif self.uns["disp_function_type"] == "mean":
             return np.full_like(x, self.uns["mean_disp"])
+        elif self.uns["disp_function_type"] == "local":
+            return np.exp(predict_local_regression(self.uns["local_trend"], np.log(np.asarray(x))))
 
     def fit_dispersion_prior(self) -> None:
         """Fit dispersion variance priors and standard deviation of log-residuals.
@@ -1169,6 +1187,64 @@ class DeseqDataSet(ad.AnnData):
             self.uns["disp_function_type"] = "mean"
         self.var["fitted_dispersions"] = np.full(self.n_vars, self.uns["mean_disp"])
 
+    def _fit_local_dispersion_trend(self, vst: bool = False):
+        """Fit the dispersion curve with a local regression of log dispersions over log means.
+
+        Parameters
+        ----------
+        vst
+            Whether the dispersion trend curve is being fitted as part of the VST pipeline. (default: ``False``).
+        """
+        disp_param_name = "vst_genewise_dispersions" if vst else "genewise_dispersions"
+
+        if disp_param_name not in self.var:
+            self.fit_genewise_dispersions(vst)
+
+        use_for_fit = self.var[disp_param_name] > 100 * self.min_disp
+        normed_means = self.var.loc[use_for_fit, "_normed_means"].to_numpy()
+        trend = fit_local_regression(
+            np.log(normed_means), np.log(self.var.loc[use_for_fit, disp_param_name].to_numpy()), weights=normed_means
+        )
+
+        if vst:
+            self.uns["vst_local_trend"] = trend
+        else:
+            self.uns["local_trend"] = trend
+
+            self.var["fitted_dispersions"] = np.full(self.n_vars, np.nan)
+            self.uns["disp_function_type"] = "local"
+            self.var.loc[self.var["non_zero"], "fitted_dispersions"] = self.disp_function(
+                self.var.loc[self.var["non_zero"], "_normed_means"]
+            )
+
+    def _vst_transform_local(self, normed_counts: np.ndarray) -> np.ndarray:
+        """Apply the variance stabilizing transformation of a local dispersion trend.
+
+        The transformation has no closed form.
+        As in DESeq2, the inverse standard deviation is integrated numerically over a grid of normalized counts, and the integral is interpolated with a cubic spline.
+
+        Parameters
+        ----------
+        normed_counts
+            Normalized counts to transform.
+
+        Returns
+        -------
+        Variance stabilized counts.
+        """
+        fitted_counts = self.layers["normed_counts"]
+        grid = np.sinh(np.linspace(0, np.arcsinh(np.nanmax(fitted_counts)), 1000))[1:]
+        dispersions = np.exp(predict_local_regression(self.uns["vst_local_trend"], np.log(grid)))
+        integrand = 1 / np.sqrt(dispersions * grid**2 + np.mean(1 / self.obs["size_factors"]) * grid)
+        knots = np.arcsinh((grid[1:] + grid[:-1]) / 2)
+        integral = np.cumsum(np.diff(grid) * (integrand[1:] + integrand[:-1]) / 2)
+        left, right = ([(3, 6 * np.polyfit(knots[end], integral[end], 3)[0])] for end in (slice(4), slice(-4, None)))
+        spline = make_interp_spline(knots, integral, bc_type=(left, right))  # type: ignore[arg-type]
+
+        low, high = np.nanquantile(fitted_counts.mean(axis=0), [0.95, 0.999])
+        scale = (np.log2(high) - np.log2(low)) / (spline(np.arcsinh(high)) - spline(np.arcsinh(low)))
+        return scale * (spline(np.arcsinh(normed_counts)) - spline(np.arcsinh(low))) + np.log2(low)
+
     def _replace_outliers(self) -> None:
         """Replace values that are filtered out (based on Cooks) with imputed values."""
         # Check that cooks distances are available. If not, compute them.
@@ -1286,6 +1362,8 @@ class DeseqDataSet(ad.AnnData):
             sub_dds.uns["trend_coeffs"] = self.uns["trend_coeffs"]
         elif sub_dds.uns["disp_function_type"] == "mean":
             sub_dds.uns["mean_disp"] = self.uns["mean_disp"]
+        elif sub_dds.uns["disp_function_type"] == "local":
+            sub_dds.uns["local_trend"] = self.uns["local_trend"]
         sub_dds.var["_normed_means"] = sub_dds.layers["normed_counts"].mean(axis=0)
         # Reshape in case there's a single gene to refit
         sub_dds.var["fitted_dispersions"] = sub_dds.disp_function(sub_dds.var["_normed_means"])
