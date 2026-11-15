@@ -10,17 +10,13 @@ from pydeseq2 import dispersions
 @pytest.mark.parametrize("optimizer", ["BFGS", "L-BFGS-B"])
 @pytest.mark.parametrize("cr_reg", [False, True])
 @pytest.mark.parametrize("prior_reg", [False, True])
-def test_dispersion_fallback_preserves_objective(
-    monkeypatch, optimizer, cr_reg, prior_reg
-):
+def test_dispersion_fallback_preserves_objective(monkeypatch, optimizer, cr_reg, prior_reg):
     counts = np.array([1, 2, 4, 8, 2, 10, 15, 30])
     design = np.column_stack([np.ones(8), np.repeat([0, 1], 4)])
     mu = np.repeat([5.0, 15.0], 4)
     alpha_hat, prior_var = 0.05, 0.03
     bounds = np.log([1e-4, 10.0])
-    monkeypatch.setattr(
-        dispersions, "minimize", lambda *args, **kwargs: OptimizeResult(success=False)
-    )
+    monkeypatch.setattr(dispersions, "minimize", lambda *args, **kwargs: OptimizeResult(success=False))
 
     def objective(log_alpha):
         alpha = np.exp(log_alpha)

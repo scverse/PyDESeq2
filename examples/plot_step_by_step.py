@@ -127,9 +127,7 @@ dds.var["fitted_dispersions"]
 # ^^^^^^^^^^^^^^^^^
 
 dds.fit_dispersion_prior()
-print(
-    f"logres_prior={dds.uns['_squared_logres']}, sigma_prior={dds.uns['prior_disp_var']}"
-)
+print(f"logres_prior={dds.uns['_squared_logres']}, sigma_prior={dds.uns['prior_disp_var']}")
 
 # %%
 # MAP Dispersions
@@ -234,7 +232,6 @@ ds.padj
 # class.
 
 ds.summary()
-ds.results_df
 
 # %%
 # Save everything if SAVE is set to True
@@ -250,7 +247,6 @@ if SAVE:
 # LFC shrinkage. This is implemented by the `lfc_shrink` method.
 
 ds.lfc_shrink(coeff="condition[T.B]")
-ds.results_df
 
 
 # %%

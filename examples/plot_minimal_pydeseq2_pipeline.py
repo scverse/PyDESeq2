@@ -17,6 +17,8 @@ We start by importing required packages and setting up an optional path to save 
 import os
 import pickle as pkl
 
+import matplotlib.pyplot as plt
+
 from pydeseq2.datasets import load_example_data
 from pydeseq2.dds import DeseqDataSet
 from pydeseq2.default_inference import DefaultInference
@@ -264,7 +266,6 @@ if SAVE:
 # %%
 # The results are then stored in the ``results_df`` attribute (``ds.results_df``).
 
-ds.results_df
 
 # %%
 # Optional: threshold-based tests
@@ -278,6 +279,15 @@ ds.results_df
 
 ds.summary(lfc_null=0.1, alt_hypothesis="greaterAbs")
 ds.plot_MA(s=20)
+
+# %%
+# To customize the figure, e.g. to set the axis limits, pass matplotlib axes to :meth:`plot_MA() <DeseqStats.plot_MA>`.
+# The same goes for :meth:`plot_dispersions() <pydeseq2.dds.DeseqDataSet.plot_dispersions>`.
+
+fig, ax = plt.subplots()
+ds.plot_MA(s=20, ax=ax)
+ax.set_ylim(-1, 1)
+plt.show()
 
 # %%
 # LFC shrinkage
@@ -295,7 +305,6 @@ if SAVE:
     with open(os.path.join(OUTPUT_PATH, "shrunk_results.pkl"), "wb") as f:
         pkl.dump(ds, f)
 
-ds.results_df
 
 # %%
 # .. note::
@@ -373,7 +382,6 @@ ds_B_vs_A = DeseqStats(dds, contrast=["condition", "B", "A"], inference=inferenc
 #
 
 ds_B_vs_A.summary()
-ds_B_vs_A.results_df
 
 
 # %%
@@ -388,7 +396,6 @@ ds_B_vs_A.results_df
 
 ds_Y_vs_X = DeseqStats(dds, contrast=["group", "Y", "X"], inference=inference)
 ds_Y_vs_X.summary()
-ds_Y_vs_X.results_df
 
 # %%
 # LFC shrinkage (multifactor)
@@ -399,4 +406,3 @@ ds_Y_vs_X.results_df
 # ``contrast`` argument.
 
 ds_B_vs_A.lfc_shrink(coeff="condition[T.B]")
-ds_B_vs_A.results_df

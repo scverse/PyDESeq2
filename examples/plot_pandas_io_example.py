@@ -192,7 +192,6 @@ ds = DeseqStats(dds, contrast=["condition", "B", "A"], inference=inference)
 # analysis, cooks filtering and multiple testing adjustement included.
 
 ds.summary()
-ds.results_df
 
 # %%
 # The results are then stored in the ``results_df`` attribute (``stat_res.results_df``).

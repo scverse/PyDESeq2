@@ -41,9 +41,7 @@ def load_example_data(
         "metadata",
     ], "The modality argument must be one of the following: raw_counts, metadata"
 
-    assert dataset in ["synthetic"], (
-        "The dataset argument must be one of the following: synthetic."
-    )
+    assert dataset in ["synthetic"], "The dataset argument must be one of the following: synthetic."
 
     # Load data
     datasets_path = Path(pydeseq2.__file__).parent / "datasets"
@@ -59,10 +57,7 @@ def load_example_data(
             path_to_data_metadata = str(path_to_data / "test_metadata.csv")
         else:
             # if the path does not exist (as is the case in RDT) load it from github
-            url_to_data = (
-                "https://raw.githubusercontent.com/scverse/"
-                "PyDESeq2/main/datasets/synthetic/"
-            )
+            url_to_data = "https://raw.githubusercontent.com/scverse/PyDESeq2/main/datasets/synthetic/"
             path_to_data_counts = url_to_data + "/test_counts.csv"
             path_to_data_metadata = url_to_data + "/test_metadata.csv"
 

@@ -176,9 +176,7 @@ class DefaultInference(inference.Inference):
         ridge_factor: np.ndarray,
         contrast: np.ndarray,
         lfc_null: np.ndarray,
-        alt_hypothesis: (
-            Literal["greaterAbs", "lessAbs", "greater", "less"] | None
-        ) = None,
+        alt_hypothesis: (Literal["greaterAbs", "lessAbs", "greater", "less"] | None) = None,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         num_genes = mu.shape[1]
         with parallel_backend(self._backend, inner_max_num_threads=1):
@@ -218,9 +216,7 @@ class DefaultInference(inference.Inference):
 
         def grad(coeffs):
             mu = covariates_fit @ coeffs
-            return -np.nanmean(
-                ((targets_fit / mu - 1)[:, None] * covariates_fit) / mu[:, None], axis=0
-            )
+            return -np.nanmean(((targets_fit / mu - 1)[:, None] * covariates_fit) / mu[:, None], axis=0)
 
         try:
             res = minimize(

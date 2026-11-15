@@ -2,6 +2,7 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 import pytest
+from matplotlib import pyplot as plt
 
 from pydeseq2.datasets import load_example_data
 from pydeseq2.dds import DeseqDataSet
@@ -79,13 +80,9 @@ def test_nan_counts(size_factors_fit_type, from_adata):
 
     def run_analysis(counts):
         kwargs = (
-            {"adata": ad.AnnData(X=counts, obs=metadata)}
-            if from_adata
-            else {"counts": counts, "metadata": metadata}
+            {"adata": ad.AnnData(X=counts, obs=metadata)} if from_adata else {"counts": counts, "metadata": metadata}
         )
-        dds = DeseqDataSet(
-            **kwargs, design="~condition", size_factors_fit_type=size_factors_fit_type
-        )
+        dds = DeseqDataSet(**kwargs, design="~condition", size_factors_fit_type=size_factors_fit_type)
         dds.deseq2()
         ds = DeseqStats(dds, contrast=["condition", "B", "A"])
         ds.summary()
@@ -146,9 +143,7 @@ def test_empty_counts(n_samples, n_genes):
 
 def test_numeric_counts():
     """Test that a ValueError is thrown when the count matrix contains non-numeric values."""
-    counts_df = pd.DataFrame(
-        {"gene1": [0, "a"], "gene2": [4, 12]}, index=["sample1", "sample2"]
-    )
+    counts_df = pd.DataFrame({"gene1": [0, "a"], "gene2": [4, 12]}, index=["sample1", "sample2"])
     metadata = pd.DataFrame({"condition": [0, 1]}, index=["sample1", "sample2"])
 
     with pytest.raises(ValueError):
@@ -157,9 +152,7 @@ def test_numeric_counts():
 
 def test_integer_counts():
     """Test that a ValueError is thrown when the count matrix contains non-integer values."""
-    counts_df = pd.DataFrame(
-        {"gene1": [0, 1.5], "gene2": [4, 12]}, index=["sample1", "sample2"]
-    )
+    counts_df = pd.DataFrame({"gene1": [0, 1.5], "gene2": [4, 12]}, index=["sample1", "sample2"])
     metadata = pd.DataFrame({"condition": [0, 1]}, index=["sample1", "sample2"])
 
     with pytest.raises(ValueError):
@@ -168,9 +161,7 @@ def test_integer_counts():
 
 def test_non_negative_counts():
     """Test that a ValueError is thrown when the count matrix contains negative values."""
-    counts_df = pd.DataFrame(
-        {"gene1": [0, -1], "gene2": [4, 12]}, index=["sample1", "sample2"]
-    )
+    counts_df = pd.DataFrame({"gene1": [0, -1], "gene2": [4, 12]}, index=["sample1", "sample2"])
     metadata = pd.DataFrame({"condition": [0, 1]}, index=["sample1", "sample2"])
 
     with pytest.raises(ValueError):
@@ -180,9 +171,7 @@ def test_non_negative_counts():
 # Tests on the metadata data (design factors)
 def test_nan_factors():
     """Test that a warning is thrown when the design factor contains NaNs."""
-    counts_df = pd.DataFrame(
-        {"gene1": [0, 1], "gene2": [4, 12]}, index=["sample1", "sample2"]
-    )
+    counts_df = pd.DataFrame({"gene1": [0, 1], "gene2": [4, 12]}, index=["sample1", "sample2"])
     metadata = pd.DataFrame({"condition": [0, np.nan]}, index=["sample1", "sample2"])
 
     with pytest.raises(ValueError):
@@ -191,9 +180,7 @@ def test_nan_factors():
 
 def test_one_factor():
     """Test that a ValueError is thrown when the design factor takes only one value."""
-    counts_df = pd.DataFrame(
-        {"gene1": [0, 1], "gene2": [4, 12]}, index=["sample1", "sample2"]
-    )
+    counts_df = pd.DataFrame({"gene1": [0, 1], "gene2": [4, 12]}, index=["sample1", "sample2"])
     metadata = pd.DataFrame({"condition": [0, 0]}, index=["sample1", "sample2"])
 
     with pytest.warns(UserWarning):
@@ -202,12 +189,8 @@ def test_one_factor():
 
 def test_rank_deficient_design():
     """Test that a UserWarning is thrown when the design matrix does not have full column rank."""
-    counts_df = pd.DataFrame(
-        {"gene1": [0, 1], "gene2": [4, 12]}, index=["sample1", "sample2"]
-    )
-    metadata = pd.DataFrame(
-        {"condition": [0, 1], "batch": ["A", "B"]}, index=["sample1", "sample2"]
-    )
+    counts_df = pd.DataFrame({"gene1": [0, 1], "gene2": [4, 12]}, index=["sample1", "sample2"])
+    metadata = pd.DataFrame({"condition": [0, 1], "batch": ["A", "B"]}, index=["sample1", "sample2"])
 
     with pytest.warns(UserWarning):
         DeseqDataSet(counts=counts_df, metadata=metadata, design="~condition + batch")
@@ -297,9 +280,7 @@ def test_lfc_shrinkage_coeff():
 
 def test_indexes():
     """Test that a ValueError is thrown when the count matrix and the metadata data don't have the same index."""
-    counts_df = pd.DataFrame(
-        {"gene1": [0, 1], "gene2": [4, 12]}, index=["sample1", "sample2"]
-    )
+    counts_df = pd.DataFrame({"gene1": [0, 1], "gene2": [4, 12]}, index=["sample1", "sample2"])
     metadata = pd.DataFrame({"condition": [0, 1]}, index=["sample01", "sample02"])
 
     with pytest.raises(ValueError):  # Should be raised by AnnData
@@ -590,3 +571,31 @@ def test_plot_MA():
     ds.summary()
     # Now this shouldn't throw an error
     ds.plot_MA()
+
+
+def test_plot_ax():
+    """Test that plots are drawn on the provided axes, without creating a new figure."""
+    counts_df = load_example_data(
+        modality="raw_counts",
+        dataset="synthetic",
+        debug=False,
+    )
+
+    metadata = load_example_data(
+        modality="metadata",
+        dataset="synthetic",
+        debug=False,
+    )
+
+    dds = DeseqDataSet(counts=counts_df, metadata=metadata)
+    dds.deseq2()
+    ds = DeseqStats(dds, contrast=["condition", "B", "A"])
+    ds.summary()
+
+    _, axes = plt.subplots(ncols=2)
+    fignums = plt.get_fignums()
+    dds.plot_dispersions(ax=axes[0])
+    ds.plot_MA(ax=axes[1])
+
+    assert plt.get_fignums() == fignums
+    assert all(ax.collections for ax in axes)
