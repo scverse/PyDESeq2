@@ -457,7 +457,8 @@ class DeseqStats:
         if not hasattr(self, "p_values"):
             self.run_wald_test()
 
-        lower_quantile = np.mean(self.base_mean == 0)
+        base_mean = self.base_mean.dropna()
+        lower_quantile = np.mean(base_mean == 0)
 
         if lower_quantile < 0.95:
             upper_quantile = 0.95
@@ -465,7 +466,7 @@ class DeseqStats:
             upper_quantile = 1
 
         theta = np.linspace(lower_quantile, upper_quantile, 50)
-        cutoffs = np.quantile(self.base_mean, theta)
+        cutoffs = np.quantile(base_mean, theta)
 
         result = pd.DataFrame(
             np.nan, index=self.dds.var_names, columns=np.arange(len(theta))
