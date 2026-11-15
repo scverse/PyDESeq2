@@ -172,6 +172,9 @@ dds = DeseqDataSet(
 # we may run the :meth:`deseq2() <DeseqDataSet.deseq2>` method
 # to fit dispersions and LFCs.
 #
+# .. note::
+#   PyDESeq2 logs its progress through the shared scverse logger, which only shows warnings by default.
+#   To follow each step, set ``scverse_misc.logging.config.verbosity = "info"``.
 #
 
 
@@ -263,6 +266,7 @@ if SAVE:
 # %%
 # The results are then stored in the ``results_df`` attribute (``ds.results_df``).
 
+
 # %%
 # Optional: threshold-based tests
 # """"""""""""""""""""""""""""""""
@@ -300,6 +304,7 @@ ds.lfc_shrink(coeff="condition[T.B]")
 if SAVE:
     with open(os.path.join(OUTPUT_PATH, "shrunk_results.pkl"), "wb") as f:
         pkl.dump(ds, f)
+
 
 # %%
 # .. note::

@@ -1,4 +1,3 @@
-import sys
 import time
 import warnings
 from typing import Literal
@@ -10,6 +9,7 @@ from matplotlib.axes import Axes
 from scipy.optimize import root_scalar  # type: ignore
 from scipy.stats import false_discovery_control  # type: ignore
 
+from pydeseq2._logging import logger
 from pydeseq2.dds import DeseqDataSet
 from pydeseq2.default_inference import DefaultInference
 from pydeseq2.inference import Inference
@@ -52,7 +52,7 @@ class DeseqStats:
     inference
         Implementation of inference routines object instance. (default: :class:`DefaultInference <pydeseq2.default_inference.DefaultInference>`).
     quiet
-        Suppress deseq2 status updates during fit.
+        Suppress the printed results, and the status updates that are otherwise logged at the info level.
 
     Attributes
     ----------
@@ -87,7 +87,7 @@ class DeseqStats:
     n_processes
         Number of threads to use for multiprocessing.
     quiet
-        Suppress deseq2 status updates during fit.
+        Suppress the printed results, and the status updates that are otherwise logged at the info level.
 
     References
     ----------
@@ -261,11 +261,10 @@ class DeseqStats:
         # Raise a warning if LFCs are shrunk.
         if self.shrunk_LFCs:
             if not self.quiet:
-                print(
-                    "Note: running Wald test on shrunk LFCs. "
+                logger.warning(
+                    "Running Wald test on shrunk LFCs. "
                     "Some sequencing datasets show better performance with the testing "
-                    "separated from the use of the LFC prior.",
-                    file=sys.stderr,
+                    "separated from the use of the LFC prior."
                 )
 
         mu = np.exp(self.design_matrix @ self.LFC.T).multiply(self.dds.obs["size_factors"], 0).values
@@ -280,7 +279,7 @@ class DeseqStats:
         LFCs = self.LFC.values
 
         if not self.quiet:
-            print("Running Wald tests...", file=sys.stderr)
+            logger.info("Running Wald tests...")
         start = time.time()
         pvals, stats, se = self.inference.wald_test(
             design_matrix=design_matrix,
@@ -294,7 +293,7 @@ class DeseqStats:
         )
         end = time.time()
         if not self.quiet:
-            print(f"... done in {end - start:.2f} seconds.\n", file=sys.stderr)
+            logger.info("... done in %.2f seconds.", end - start)
 
         self.p_values: pd.Series = pd.Series(pvals, index=self.dds.var_names)
         self.statistics: pd.Series = pd.Series(stats, index=self.dds.var_names)
@@ -341,7 +340,7 @@ class DeseqStats:
             prior_scale = np.minimum(np.sqrt(prior_var), 1)
 
         if not self.quiet:
-            print("Fitting MAP LFCs...", file=sys.stderr)
+            logger.info("Fitting MAP LFCs...")
         start = time.time()
         lfcs, inv_hessians, l_bfgs_b_converged_ = self.inference.lfc_shrink_nbinom_glm(
             design_matrix=design_matrix,
@@ -355,7 +354,7 @@ class DeseqStats:
         )
         end = time.time()
         if not self.quiet:
-            print(f"... done in {end - start:.2f} seconds.\n", file=sys.stderr)
+            logger.info("... done in %.2f seconds.", end - start)
 
         new_lfc_values = np.array(lfcs)[:, coeff_idx]
         new_se_values = np.array([np.sqrt(np.abs(inv_hess[coeff_idx, coeff_idx])) for inv_hess in inv_hessians])
