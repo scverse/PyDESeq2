@@ -134,6 +134,16 @@ def test_nan_counts_zero_inflated():
     assert np.isfinite(dds.obs["size_factors"]).all()
 
 
+@pytest.mark.parametrize(("n_samples", "n_genes"), [(0, 2), (2, 0)])
+def test_empty_counts(n_samples, n_genes):
+    """Test that a ValueError is thrown when the count matrix has no samples or genes."""
+    counts_df = pd.DataFrame(np.ones((n_samples, n_genes), dtype=int))
+    metadata = pd.DataFrame({"condition": np.arange(n_samples)})
+
+    with pytest.raises(ValueError, match="The count matrix is empty"):
+        DeseqDataSet(counts=counts_df, metadata=metadata, design="~condition")
+
+
 def test_numeric_counts():
     """Test that a ValueError is thrown when the count matrix contains non-numeric values."""
     counts_df = pd.DataFrame(
