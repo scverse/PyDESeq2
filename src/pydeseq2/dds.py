@@ -245,7 +245,8 @@ class DeseqDataSet(ad.AnnData):
             # Keep track of the categorical factors used in the model specification,
             # including variable and factor names, by generating a custom materializer.
             self.formulaic_contrasts = FormulaicContrasts(self.obs, self.design)
-            self.obsm["design_matrix"] = self.formulaic_contrasts.design_matrix
+            # anndata cannot write formulaic's ModelMatrix to h5ad
+            self.obsm["design_matrix"] = pd.DataFrame(self.formulaic_contrasts.design_matrix)
         else:
             self.obsm["design_matrix"] = self.design
 

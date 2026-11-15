@@ -855,9 +855,11 @@ def test_write_h5ad(counts_df, metadata, tmp_path):
     """Test that a fitted DeseqDataSet can be written to and read from h5ad."""
     dds = DeseqDataSet(counts=counts_df, metadata=metadata, design="~condition")
     dds.deseq2()
-    dds.vst(use_design=False)
 
     path = tmp_path / "dds.h5ad"
+    dds.write_h5ad(path)
+
+    dds.vst(use_design=False)
     dds.write_h5ad(path)
     adata = ad.read_h5ad(path)
 
