@@ -3,6 +3,7 @@
 .. currentmodule:: {{ module }}
 
 .. autoclass:: {{ objname }}
+   :members:
 
    {% block methods %}
    {% set own = methods | reject("in", inherited_members) | reject("eq", "__init__") | list %}

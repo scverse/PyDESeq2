@@ -22,6 +22,7 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
 ]
 dynamic = [ "version" ]
 dependencies = [
@@ -55,20 +56,15 @@ doc = [
   "gitpython>=3.1.42",
   "ipython",
   "jupyter",
-  "myst-parser",
   "numpydoc",
-  "scanpydoc>=0.15",
+  "scverse-doc[full]>=0.4",
   "sphinx>=8",
   "sphinx-autobuild",
   "sphinx-autodoc-typehints",
-  "sphinx-book-theme>=1",
   "sphinx-click",
-  "sphinx-copybutton",
-  "sphinx-design",
   "sphinx-gallery",
   "sphinxcontrib-bibtex",
   "sphinxcontrib-googleanalytics>=0.5",
-  "sphinxext-opengraph",
   "texttable",
 ]
 typecheck = [
@@ -87,6 +83,8 @@ envs.docs.scripts.build = "sphinx-build -M html docs docs/_build -W {args}"
 envs.docs.scripts.clean = "git clean -fdX -- {args:docs}"
 envs.docs.scripts.open = "python -m webbrowser -t docs/_build/html/index.html"
 envs.docs.dependency-groups = [ "doc" ]
+envs.hatch-check-types.scripts.check = [ "mypy src/pydeseq2 --ignore-missing-imports" ]
+envs.hatch-check-types.dependency-groups = [ "typecheck", "test" ]
 envs.hatch-test.matrix = [
   # Test the lowest and highest supported Python versions with normal deps
   { deps = [ "stable" ], python = [ "3.12", "3.14" ] },
@@ -99,8 +97,6 @@ envs.hatch-test.overrides.matrix.deps.env-vars = [
   { value = "allow", key = "UV_PRERELEASE", if = [ "pre" ] },
 ]
 envs.hatch-test.dependency-groups = [ "dev", "test" ]
-envs.hatch-check-types.scripts.check = [ "mypy src/pydeseq2 --ignore-missing-imports" ]
-envs.hatch-check-types.dependency-groups = [ "typecheck", "test" ]
 
 [tool.ruff]
 line-length = 89
@@ -148,14 +144,16 @@ ini_options.filterwarnings = [
   # ignore Pyarrow deprecation warnings
   'ignore:\s*Pyarrow will become a required dependency of pandas:DeprecationWarning',
   'ignore:\s*Setting an item of incompatible dtype:FutureWarning',
+  # raised inside anndata<=0.13.4, remove once anndata>=0.13.5 (scverse/anndata#2671)
+  'ignore:The .future\.infer_string. option is deprecated:DeprecationWarning',
 ]
 
 [tool.coverage]
+run.source = [ "pydeseq2" ]
 run.omit = [
   "**/test_*.py",
 ]
 run.patch = [ "subprocess" ]
-run.source = [ "pydeseq2" ]
 
 [tool.cruft]
 skip = [

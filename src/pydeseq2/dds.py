@@ -39,6 +39,7 @@ class DeseqDataSet(ad.AnnData):
     The DeseqDataSet extends the `AnnData class <https://anndata.readthedocs.io/en/latest/generated/anndata.AnnData.html#anndata.AnnData>`_.
     As such, it implements the same methods and attributes, in addition to those that are specific to pydeseq2.
     Dispersions and LFCs are estimated following the DESeq2 pipeline :cite:p:`DeseqDataSet-love2014moderated`.
+    Genes that only have zero counts or that have NaN counts are ignored: their dispersions, LFCs and p-values are set to NaN.
 
     Parameters
     ----------
@@ -125,9 +126,9 @@ class DeseqDataSet(ad.AnnData):
     n_processes
         Number of cpus to use for multiprocessing.
     non_zero_idx
-        Indices of genes that have non-uniformly zero counts.
+        Indices of genes that have non-uniformly zero counts and no NaN counts.
     non_zero_genes
-        Index of genes that have non-uniformly zero counts.
+        Index of genes that have non-uniformly zero counts and no NaN counts.
     counts_to_refit
         Read counts after replacement, containing only genes for which dispersions and LFCs must be fitted again.
     new_all_zeroes_genes
@@ -137,7 +138,7 @@ class DeseqDataSet(ad.AnnData):
     logmeans
         Gene-wise mean log counts, computed in ``preprocessing.deseq2_norm_fit()``.
     filtered_genes
-        Genes whose log means are different from -∞, computed in preprocessing.deseq2_norm_fit().
+        Genes whose log means are finite, computed in preprocessing.deseq2_norm_fit().
     factor_storage
         A dictionary storing metadata for each factor processed by the custom materializer (only if ``design`` is input as a formula).
     variable_to_factors
@@ -200,12 +201,13 @@ class DeseqDataSet(ad.AnnData):
             test_valid_counts(adata_counts)
             # Copy fields from original AnnData
             self.__dict__.update(adata.__dict__)
-            # Cast counts to ints to avoid any issue
-            self.X = adata_counts.astype(int)
+            # Cast counts to ints (or floats if there are NaNs) to avoid any issue
+            self.X = adata_counts.astype(float if np.isnan(adata_counts).any() else int)
         elif counts is not None and metadata is not None:
             # Test counts before going further
             test_valid_counts(counts)
-            super().__init__(X=counts.astype(int), obs=metadata)
+            counts_dtype = float if np.isnan(counts).any(axis=None) else int
+            super().__init__(X=counts.astype(counts_dtype), obs=metadata)
         else:
             raise ValueError(
                 "Either adata or both counts and metadata arguments must be provided."
@@ -620,8 +622,10 @@ class DeseqDataSet(ad.AnnData):
             np.log(self.X, out=log_counts, where=self.X != 0)
             logmeans = log_counts.mean(axis=0)
 
-            # Determine which genes are usable (finite logmeans)
-            self.filtered_genes = (~np.isinf(logmeans)) & (logmeans > 0)
+            # Only exclude all-zero genes, as DESeq2's geoMeanNZ does. A gene whose
+            # positive counts are all 1 has logmeans == 0 and must be kept.
+            self.filtered_genes = np.asarray((self.X > 0).any(axis=0)).ravel()
+            self.filtered_genes &= ~np.isnan(self.X).any(axis=0)
             _control_mask &= self.filtered_genes
 
             # Calculate size factor per sample
@@ -640,8 +644,8 @@ class DeseqDataSet(ad.AnnData):
             self.logmeans = logmeans
 
         # Test whether it is possible to use median-of-ratios.
-        elif (self.X == 0).any(0).all():
-            # There is at least a zero for each gene
+        elif not (self.X > 0).all(0).any():
+            # There is at least a zero or a NaN for each gene
             warnings.warn(
                 "Every gene contains at least one zero, "
                 "cannot compute log geometric means. Switching to iterative mode.",
@@ -688,8 +692,10 @@ class DeseqDataSet(ad.AnnData):
         if "size_factors" not in self.obs:
             self.fit_size_factors(fit_type=self.size_factors_fit_type)
 
-        # Exclude genes with all zeroes
-        self.var["non_zero"] = ~(self.X == 0).all(axis=0)
+        # Exclude genes with all zeroes or with NaN counts
+        self.var["non_zero"] = ~(
+            (self.X == 0).all(axis=0) | np.isnan(self.X).any(axis=0)
+        )
         self.non_zero_idx = np.arange(self.n_vars)[self.var["non_zero"]]
         self.non_zero_genes = self.var_names[self.var["non_zero"]]
 
@@ -1183,8 +1189,8 @@ class DeseqDataSet(ad.AnnData):
                 np.isinf(covariates.loc[gene]).any()
                 or np.isnan(covariates.loc[gene]).any()
             ):
-                targets.drop(labels=[gene], inplace=True)
-                covariates.drop(labels=[gene], inplace=True)
+                targets = targets.drop(labels=[gene])
+                covariates = covariates.drop(labels=[gene])
 
         # Initialize coefficients
         old_coeffs: np.ndarray | pd.Series = pd.Series([0.1, 0.1])
@@ -1210,13 +1216,11 @@ class DeseqDataSet(ad.AnnData):
             # Filter out genes that are too far away from the curve before refitting
             pred_ratios = self.var.loc[covariates.index, disp_param_name] / predictions
 
-            targets.drop(
-                targets[(pred_ratios < 1e-4) | (pred_ratios >= 15)].index,
-                inplace=True,
+            targets = targets.drop(
+                targets[(pred_ratios < 1e-4) | (pred_ratios >= 15)].index
             )
-            covariates.drop(
-                covariates[(pred_ratios < 1e-4) | (pred_ratios >= 15)].index,
-                inplace=True,
+            covariates = covariates.drop(
+                covariates[(pred_ratios < 1e-4) | (pred_ratios >= 15)].index
             )
 
         # Store the coefficients as a plain dict so the object can be written to h5ad

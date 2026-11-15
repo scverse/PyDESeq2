@@ -96,6 +96,7 @@ metadata = metadata.loc[samples_to_keep]
 # .. note::
 #   In the case where the design factor contains ``NaN`` entries, PyDESeq2 will throw an
 #   error when intializing a :class:`DeseqDataSet <dds.DeseqDataSet>`.
+#   Genes whose counts contain ``NaN`` entries are ignored with a warning, and their dispersions, LFCs and p-values are set to ``NaN``.
 
 # %%
 # Next, we filter out genes that have less than 10 read counts in total. Note again that

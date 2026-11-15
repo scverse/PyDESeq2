@@ -1,4 +1,4 @@
-# Citing PyDESeq2
+# Citation
 
 If you use PyDESeq2, please cite the PyDESeq2 paper {cite:p}`muzellec2023pydeseq2` and the original DESeq2 method {cite:p}`love2014moderated` it reimplements:
 

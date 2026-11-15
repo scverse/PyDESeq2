@@ -44,14 +44,14 @@ def deseq2_norm_fit(counts: pd.DataFrame | np.ndarray) -> tuple[np.ndarray, np.n
     logmeans
         Gene-wise mean log counts.
     filtered_genes
-        Genes whose log means are different from -∞.
+        Genes whose log means are finite.
     """
     # Compute gene-wise mean log counts
     with np.errstate(divide="ignore"):  # ignore division by zero warnings
         log_counts = np.log(counts)
     logmeans = log_counts.mean(axis=0)
-    # Filter out genes with -∞ log means
-    filtered_genes = ~np.isinf(logmeans)
+    # Filter out genes with -∞ or NaN log means
+    filtered_genes = np.isfinite(logmeans)
 
     return logmeans, filtered_genes
 
@@ -73,7 +73,7 @@ def deseq2_norm_transform(
     logmeans
         Gene-wise mean log counts.
     filtered_genes
-        Genes whose log means are different from -∞.
+        Genes whose log means are finite.
 
     Returns
     -------

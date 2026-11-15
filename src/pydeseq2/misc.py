@@ -1,6 +1,7 @@
 """Helpers that do not belong to any single step of the pipeline."""
 
 import multiprocessing
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -9,7 +10,8 @@ import pandas as pd
 def test_valid_counts(counts: pd.DataFrame | np.ndarray) -> None:
     """Test that the count matrix contains valid inputs.
 
-    More precisely, test that inputs are non-negative integers.
+    More precisely, test that inputs are non-negative integers or NaNs.
+    A warning is raised if the count matrix contains NaNs.
 
     Parameters
     ----------
@@ -18,19 +20,23 @@ def test_valid_counts(counts: pd.DataFrame | np.ndarray) -> None:
         One column per gene, rows are indexed by sample barcodes.
     """
     if isinstance(counts, pd.DataFrame):
-        if counts.isna().any().any():
-            raise ValueError("NaNs are not allowed in the count matrix.")
         if not np.issubdtype(counts.to_numpy().dtype, np.number):
             raise ValueError("The count matrix should only contain numbers.")
     else:
-        if np.isnan(counts).any().any():
-            raise ValueError("NaNs are not allowed in the count matrix.")
         if not np.issubdtype(counts.dtype, np.number):
             raise ValueError("The count matrix should only contain numbers.")
-    if (counts % 1 != 0).any().any():
+    is_nan = np.isnan(counts)
+    if ((counts % 1 != 0) & ~is_nan).any(axis=None):
         raise ValueError("The count matrix should only contain integers.")
     if (counts < 0).any().any():
         raise ValueError("The count matrix should only contain non-negative values.")
+    if is_nan.any(axis=None):
+        warnings.warn(
+            "The count matrix contains NaNs. Genes with NaN counts will be ignored, "
+            "and their dispersions, LFCs and p-values will be NaN.",
+            UserWarning,
+            stacklevel=3,
+        )
 
 
 def n_or_more_replicates(design_matrix: pd.DataFrame, min_replicates: int) -> pd.Series:
