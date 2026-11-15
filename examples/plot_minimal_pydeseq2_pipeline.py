@@ -17,6 +17,8 @@ We start by importing required packages and setting up an optional path to save 
 import os
 import pickle as pkl
 
+import matplotlib.pyplot as plt
+
 from pydeseq2.datasets import load_example_data
 from pydeseq2.dds import DeseqDataSet
 from pydeseq2.default_inference import DefaultInference
@@ -273,6 +275,15 @@ if SAVE:
 
 ds.summary(lfc_null=0.1, alt_hypothesis="greaterAbs")
 ds.plot_MA(s=20)
+
+# %%
+# To customize the figure, e.g. to set the axis limits, pass matplotlib axes to :meth:`plot_MA() <DeseqStats.plot_MA>`.
+# The same goes for :meth:`plot_dispersions() <DeseqDataSet.plot_dispersions>`.
+
+fig, ax = plt.subplots()
+ds.plot_MA(s=20, ax=ax)
+ax.set_ylim(-1, 1)
+plt.show()
 
 # %%
 # LFC shrinkage

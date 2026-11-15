@@ -6,6 +6,7 @@ from typing import Literal
 # import anndata as ad
 import numpy as np
 import pandas as pd
+from matplotlib.axes import Axes
 from scipy.optimize import root_scalar  # type: ignore
 from scipy.stats import false_discovery_control  # type: ignore
 
@@ -414,7 +415,13 @@ class DeseqStats:
                 print(f"Shrunk log2 fold change & Wald test p-value: {coeff}")
                 print(self.results_df)
 
-    def plot_MA(self, log: bool = True, save_path: str | None = None, **kwargs):
+    def plot_MA(
+        self,
+        log: bool = True,
+        save_path: str | None = None,
+        ax: Axes | None = None,
+        **kwargs,
+    ):
         """
         Create an log ratio (M)-average (A) plot using matplotlib.
 
@@ -428,6 +435,9 @@ class DeseqStats:
         save_path
             The path where to save the plot.
             If left None, the plot won't be saved (``default=None``).
+        ax
+            The axes to plot on.
+            If left None, a new figure is created (``default=None``).
         **kwargs
             Matplotlib keyword arguments for the scatter plot.
         """
@@ -445,6 +455,7 @@ class DeseqStats:
             save_path=save_path,
             lfc_null=self.lfc_null,
             alt_hypothesis=self.alt_hypothesis,
+            ax=ax,
             **kwargs,
         )
 
