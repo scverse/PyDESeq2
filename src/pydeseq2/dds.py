@@ -1,4 +1,3 @@
-import sys
 import time
 import warnings
 from collections.abc import MutableMapping
@@ -16,6 +15,7 @@ from scipy.special import polygamma  # type: ignore
 from scipy.stats import f  # type: ignore
 from scipy.stats import trim_mean  # type: ignore
 
+from pydeseq2._logging import logger
 from pydeseq2.default_inference import DefaultInference
 from pydeseq2.dispersions import dispersion_trend
 from pydeseq2.dispersions import robust_method_of_moments_disp
@@ -100,7 +100,7 @@ class DeseqDataSet(ad.AnnData):
     inference
         Implementation of inference routines object instance. (default: :class:`DefaultInference <pydeseq2.default_inference.DefaultInference>`).
     quiet
-        Suppress deseq2 status updates during fit.
+        Suppress deseq2 status updates during fit, which are otherwise logged at the info level.
     low_memory
         Remove intermediate data structures from .layers and from .obsm that are no longer necessary after they are used during deseq2 run, such as Cook's distances. (default: False)
 
@@ -134,7 +134,7 @@ class DeseqDataSet(ad.AnnData):
     new_all_zeroes_genes
         Genes which have only zero counts after outlier replacement.
     quiet
-        Suppress deseq2 status updates during fit.
+        Suppress deseq2 status updates during fit, which are otherwise logged at the info level.
     logmeans
         Gene-wise mean log counts, computed in ``preprocessing.deseq2_norm_fit()``.
     filtered_genes
@@ -336,7 +336,7 @@ class DeseqDataSet(ad.AnnData):
             self.vst_fit_type = self.fit_type
 
         if not self.quiet:
-            print(f"Fit type used for VST : {self.vst_fit_type}")
+            logger.info("Fit type used for VST: %s", self.vst_fit_type)
 
         self.vst_fit(use_design=use_design)
         self.layers["vst_counts"] = self.vst_transform()
@@ -489,7 +489,7 @@ class DeseqDataSet(ad.AnnData):
         if fit_type is not None:
             self.fit_type = fit_type
             if not self.quiet:
-                print(f"Using {self.fit_type} fit type.")
+                logger.info("Using %s fit type.", self.fit_type)
 
         # Compute DESeq2 normalization factors using the Median-of-ratios method
         self.fit_size_factors(
@@ -581,7 +581,7 @@ class DeseqDataSet(ad.AnnData):
         if fit_type is None:
             fit_type = self.size_factors_fit_type
         if not self.quiet:
-            print("Fitting size factors...", file=sys.stderr)
+            logger.info("Fitting size factors...")
 
         start = time.time()
 
@@ -590,9 +590,9 @@ class DeseqDataSet(ad.AnnData):
             if hasattr(self, "control_genes"):
                 control_genes = self.control_genes
                 if not self.quiet:
-                    print(
-                        f"Using {control_genes} as control genes, passed at"
-                        " DeseqDataSet initialization"
+                    logger.info(
+                        "Using %s as control genes, passed at DeseqDataSet initialization",
+                        control_genes,
                     )
 
         # If control genes are provided, set a mask where those genes are True
@@ -675,7 +675,7 @@ class DeseqDataSet(ad.AnnData):
         self.var["_normed_means"] = self.layers["normed_counts"].mean(axis=0)
 
         if not self.quiet:
-            print(f"... done in {end - start:.2f} seconds.\n", file=sys.stderr)
+            logger.info("... done in %.2f seconds.", end - start)
 
     def fit_genewise_dispersions(self, vst=False) -> None:
         """Fit gene-wise dispersion estimates.
@@ -741,7 +741,7 @@ class DeseqDataSet(ad.AnnData):
         del mu_hat_
 
         if not self.quiet:
-            print("Fitting dispersions...", file=sys.stderr)
+            logger.info("Fitting dispersions...")
         start = time.time()
         dispersions_, l_bfgs_b_converged_ = self.inference.alpha_mle(
             counts=self.X[:, self.non_zero_idx],
@@ -754,7 +754,7 @@ class DeseqDataSet(ad.AnnData):
         end = time.time()
 
         if not self.quiet:
-            print(f"... done in {end - start:.2f} seconds.\n", file=sys.stderr)
+            logger.info("... done in %.2f seconds.", end - start)
 
         self.var[disp_param_name] = np.full(self.n_vars, np.nan)
         self.var.loc[self.var["non_zero"], disp_param_name] = np.clip(
@@ -782,7 +782,7 @@ class DeseqDataSet(ad.AnnData):
             self.fit_genewise_dispersions(vst)
 
         if not self.quiet:
-            print("Fitting dispersion trend curve...", file=sys.stderr)
+            logger.info("Fitting dispersion trend curve...")
         start = time.time()
 
         if fit_type == "parametric":
@@ -797,7 +797,7 @@ class DeseqDataSet(ad.AnnData):
         end = time.time()
 
         if not self.quiet:
-            print(f"... done in {end - start:.2f} seconds.\n", file=sys.stderr)
+            logger.info("... done in %.2f seconds.", end - start)
 
     def disp_function(self, x):
         """Return the dispersion trend function at x."""
@@ -864,7 +864,7 @@ class DeseqDataSet(ad.AnnData):
         design_matrix = self.obsm["design_matrix"].values
 
         if not self.quiet:
-            print("Fitting MAP dispersions...", file=sys.stderr)
+            logger.info("Fitting MAP dispersions...")
         start = time.time()
         dispersions_, l_bfgs_b_converged_ = self.inference.alpha_mle(
             counts=self.X[:, self.non_zero_idx],
@@ -880,7 +880,7 @@ class DeseqDataSet(ad.AnnData):
         end = time.time()
 
         if not self.quiet:
-            print(f"... done in {end - start:.2f} seconds.\n", file=sys.stderr)
+            logger.info("... done in %.2f seconds.", end - start)
 
         self.var["MAP_dispersions"] = np.full(self.n_vars, np.nan)
         self.var.loc[self.var["non_zero"], "MAP_dispersions"] = np.clip(
@@ -915,7 +915,7 @@ class DeseqDataSet(ad.AnnData):
         design_matrix = self.obsm["design_matrix"].values
 
         if not self.quiet:
-            print("Fitting LFCs...", file=sys.stderr)
+            logger.info("Fitting LFCs...")
         start = time.time()
         mle_lfcs_, mu_, hat_diagonals_, converged_ = self.inference.irls(
             counts=self.X[:, self.non_zero_idx],
@@ -928,7 +928,7 @@ class DeseqDataSet(ad.AnnData):
         end = time.time()
 
         if not self.quiet:
-            print(f"... done in {end - start:.2f} seconds.\n", file=sys.stderr)
+            logger.info("... done in %.2f seconds.", end - start)
 
         self.varm["LFC"] = pd.DataFrame(
             np.nan,
@@ -960,7 +960,7 @@ class DeseqDataSet(ad.AnnData):
             self.fit_MAP_dispersions()
 
         if not self.quiet:
-            print("Calculating cook's distance...", file=sys.stderr)
+            logger.info("Calculating cook's distance...")
 
         start = time.time()
         num_vars = self.obsm["design_matrix"].shape[-1]
@@ -1004,7 +1004,7 @@ class DeseqDataSet(ad.AnnData):
         self.layers["cooks"][:, self.var["non_zero"]] = squared_pearson_res
 
         if not self.quiet:
-            print(f"... done in {time.time() - start:.2f} seconds.\n", file=sys.stderr)
+            logger.info("... done in %.2f seconds.", time.time() - start)
 
     def refit(self) -> None:
         """Refit Cook outliers.
@@ -1014,10 +1014,7 @@ class DeseqDataSet(ad.AnnData):
         # Replace outlier counts
         self._replace_outliers()
         if not self.quiet:
-            print(
-                f"Replacing {sum(self.var['replaced'])} outlier genes.\n",
-                file=sys.stderr,
-            )
+            logger.info("Replacing %d outlier genes.", sum(self.var["replaced"]))
 
         if sum(self.var["replaced"]) > 0:
             # Refit dispersions and LFCs for genes that had outliers replaced
@@ -1465,10 +1462,9 @@ class DeseqDataSet(ad.AnnData):
             ]
 
             if len(use_for_mean_genes) == 0:
-                print(
+                logger.warning(
                     "No genes have a dispersion above 10 * min_disp in "
-                    "_fit_iterate_size_factors.",
-                    file=sys.stderr,
+                    "_fit_iterate_size_factors."
                 )
                 break
 
@@ -1488,7 +1484,7 @@ class DeseqDataSet(ad.AnnData):
             self.obs["size_factors"] = np.exp(res.x - np.mean(res.x))
 
             if not res.success:
-                print("A size factor fitting iteration failed.", file=sys.stderr)
+                logger.warning("A size factor fitting iteration failed.")
                 break
 
             if (i > 1) and np.sum(
@@ -1496,7 +1492,7 @@ class DeseqDataSet(ad.AnnData):
             ) < 1e-4:
                 break
             elif i == niter - 1:
-                print("Iterative size factor fitting did not converge.", file=sys.stderr)
+                logger.warning("Iterative size factor fitting did not converge.")
 
         # Restore the design matrix and free buffer
         self.obsm["design_matrix"] = self.obsm["design_matrix_buffer"].copy()

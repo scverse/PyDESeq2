@@ -1,4 +1,3 @@
-import sys
 import time
 import warnings
 from typing import Literal
@@ -9,6 +8,7 @@ import pandas as pd
 from scipy.optimize import root_scalar  # type: ignore
 from scipy.stats import false_discovery_control  # type: ignore
 
+from pydeseq2._logging import logger
 from pydeseq2.dds import DeseqDataSet
 from pydeseq2.default_inference import DefaultInference
 from pydeseq2.inference import Inference
@@ -51,7 +51,7 @@ class DeseqStats:
     inference
         Implementation of inference routines object instance. (default: :class:`DefaultInference <pydeseq2.default_inference.DefaultInference>`).
     quiet
-        Suppress deseq2 status updates during fit.
+        Suppress deseq2 status updates during fit, which are otherwise logged at the info level.
 
     Attributes
     ----------
@@ -86,7 +86,7 @@ class DeseqStats:
     n_processes
         Number of threads to use for multiprocessing.
     quiet
-        Suppress deseq2 status updates during fit.
+        Suppress deseq2 status updates during fit, which are otherwise logged at the info level.
 
     References
     ----------
@@ -253,17 +253,18 @@ class DeseqStats:
         if not self.quiet:
             if isinstance(self.contrast, np.ndarray):
                 # The contrast vector was directly provided
-                print(
-                    f"Log2 fold change & Wald test p-value, contrast vector: "
-                    f"{self.contrast}"
+                logger.info(
+                    "Log2 fold change & Wald test p-value, contrast vector: %s\n%s",
+                    self.contrast,
+                    self.results_df,
                 )
             else:
                 # The factor is categorical
-                print(
-                    f"Log2 fold change & Wald test p-value: "
-                    f"{self.contrast[0]} {self.contrast[1]} vs {self.contrast[2]}"
+                logger.info(
+                    "Log2 fold change & Wald test p-value: %s %s vs %s\n%s",
+                    *self.contrast,
+                    self.results_df,
                 )
-            print(self.results_df)
 
     def run_wald_test(self) -> None:
         """Perform a Wald test.
@@ -275,11 +276,10 @@ class DeseqStats:
         # Raise a warning if LFCs are shrunk.
         if self.shrunk_LFCs:
             if not self.quiet:
-                print(
-                    "Note: running Wald test on shrunk LFCs. "
+                logger.warning(
+                    "Running Wald test on shrunk LFCs. "
                     "Some sequencing datasets show better performance with the testing "
-                    "separated from the use of the LFC prior.",
-                    file=sys.stderr,
+                    "separated from the use of the LFC prior."
                 )
 
         mu = (
@@ -298,7 +298,7 @@ class DeseqStats:
         LFCs = self.LFC.values
 
         if not self.quiet:
-            print("Running Wald tests...", file=sys.stderr)
+            logger.info("Running Wald tests...")
         start = time.time()
         pvals, stats, se = self.inference.wald_test(
             design_matrix=design_matrix,
@@ -312,7 +312,7 @@ class DeseqStats:
         )
         end = time.time()
         if not self.quiet:
-            print(f"... done in {end - start:.2f} seconds.\n", file=sys.stderr)
+            logger.info("... done in %.2f seconds.", end - start)
 
         self.p_values: pd.Series = pd.Series(pvals, index=self.dds.var_names)
         self.statistics: pd.Series = pd.Series(stats, index=self.dds.var_names)
@@ -359,7 +359,7 @@ class DeseqStats:
             prior_scale = np.minimum(np.sqrt(prior_var), 1)
 
         if not self.quiet:
-            print("Fitting MAP LFCs...", file=sys.stderr)
+            logger.info("Fitting MAP LFCs...")
         start = time.time()
         lfcs, inv_hessians, l_bfgs_b_converged_ = self.inference.lfc_shrink_nbinom_glm(
             design_matrix=design_matrix,
@@ -373,7 +373,7 @@ class DeseqStats:
         )
         end = time.time()
         if not self.quiet:
-            print(f"... done in {end - start:.2f} seconds.\n", file=sys.stderr)
+            logger.info("... done in %.2f seconds.", end - start)
 
         new_lfc_values = np.array(lfcs)[:, coeff_idx]
         new_se_values = np.array(
@@ -411,8 +411,11 @@ class DeseqStats:
             self.results_df["log2FoldChange"] = self.LFC.iloc[:, coeff_idx] / np.log(2)
             self.results_df["lfcSE"] = self.SE / np.log(2)
             if not self.quiet:
-                print(f"Shrunk log2 fold change & Wald test p-value: {coeff}")
-                print(self.results_df)
+                logger.info(
+                    "Shrunk log2 fold change & Wald test p-value: %s\n%s",
+                    coeff,
+                    self.results_df,
+                )
 
     def plot_MA(self, log: bool = True, save_path: str | None = None, **kwargs):
         """

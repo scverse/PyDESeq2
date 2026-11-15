@@ -170,6 +170,9 @@ dds = DeseqDataSet(
 # we may run the :meth:`deseq2() <DeseqDataSet.deseq2>` method
 # to fit dispersions and LFCs.
 #
+# .. note::
+#   PyDESeq2 logs its progress through the shared scverse logger, which only shows warnings by default.
+#   To follow each step, set ``scverse_misc.logging.config.verbosity = "info"``.
 #
 
 
@@ -261,6 +264,8 @@ if SAVE:
 # %%
 # The results are then stored in the ``results_df`` attribute (``ds.results_df``).
 
+ds.results_df
+
 # %%
 # Optional: threshold-based tests
 # """"""""""""""""""""""""""""""""
@@ -289,6 +294,8 @@ ds.lfc_shrink(coeff="condition[T.B]")
 if SAVE:
     with open(os.path.join(OUTPUT_PATH, "shrunk_results.pkl"), "wb") as f:
         pkl.dump(ds, f)
+
+ds.results_df
 
 # %%
 # .. note::
@@ -366,6 +373,7 @@ ds_B_vs_A = DeseqStats(dds, contrast=["condition", "B", "A"], inference=inferenc
 #
 
 ds_B_vs_A.summary()
+ds_B_vs_A.results_df
 
 
 # %%
@@ -380,6 +388,7 @@ ds_B_vs_A.summary()
 
 ds_Y_vs_X = DeseqStats(dds, contrast=["group", "Y", "X"], inference=inference)
 ds_Y_vs_X.summary()
+ds_Y_vs_X.results_df
 
 # %%
 # LFC shrinkage (multifactor)
@@ -390,3 +399,4 @@ ds_Y_vs_X.summary()
 # ``contrast`` argument.
 
 ds_B_vs_A.lfc_shrink(coeff="condition[T.B]")
+ds_B_vs_A.results_df
