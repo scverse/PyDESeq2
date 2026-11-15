@@ -5,7 +5,7 @@ from scipy.optimize import minimize  # type: ignore
 from scipy.special import gammaln  # type: ignore
 from scipy.special import polygamma  # type: ignore
 
-from pydeseq2.grid_search import grid_fit_shrink_beta
+import pydeseq2.grid_search
 
 
 def nb_nll(counts: np.ndarray, mu: np.ndarray, alpha: float | np.ndarray) -> float | np.ndarray:
@@ -276,7 +276,7 @@ def nbinomGLM(
     if not converged and num_vars == 2:
         # If the solver failed, fit using grid search (slow)
         # Only for single-factor analysis
-        beta = grid_fit_shrink_beta(
+        beta = pydeseq2.grid_search.grid_fit_shrink_beta(
             counts,
             offset,
             design_matrix,

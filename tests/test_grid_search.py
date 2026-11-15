@@ -1,3 +1,6 @@
+import subprocess
+import sys
+
 import numpy as np
 import pytest
 from scipy.optimize import OptimizeResult
@@ -58,3 +61,9 @@ def test_shrink_grid_fallback_preserves_requested_prior(monkeypatch, shrink_inde
         shrink_index=1 - shrink_index,
     )
     np.testing.assert_allclose(permuted_beta[::-1], beta, atol=1e-12, rtol=0)
+
+
+@pytest.mark.parametrize("module", ["grid_search", "distributions"])
+def test_import_in_fresh_interpreter(module):
+    """Test that both modules of the import cycle can be imported first."""
+    subprocess.run([sys.executable, "-c", f"import pydeseq2.{module}"], check=True)
