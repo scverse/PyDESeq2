@@ -28,9 +28,7 @@ extensions = [
 add_module_names = False
 myst_url_schemes = ("http", "https", "mailto")
 typehints_defaults = "braces"
-always_use_bars_union = (
-    True  # use `|` instead of `Union` in types even when building with Python ≤3.14
-)
+always_use_bars_union = True  # use `|` instead of `Union` in types even when building with Python ≤3.14
 
 ogp_social_cards = {"image": "_static/pydeseq2_logo.png"}
 googleanalytics_id = "UA-83738774-2"

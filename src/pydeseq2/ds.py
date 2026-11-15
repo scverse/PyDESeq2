@@ -104,16 +104,12 @@ class DeseqStats:
         independent_filter: bool = True,
         prior_LFC_var: np.ndarray | None = None,
         lfc_null: float = 0.0,
-        alt_hypothesis: (
-            Literal["greaterAbs", "lessAbs", "greater", "less"] | None
-        ) = None,
+        alt_hypothesis: (Literal["greaterAbs", "lessAbs", "greater", "less"] | None) = None,
         inference: Inference | None = None,
         quiet: bool = False,
         n_cpus: int | None = None,
     ) -> None:
-        assert "LFC" in dds.varm, (
-            "Please provide a fitted DeseqDataSet by first running the `deseq2` method."
-        )
+        assert "LFC" in dds.varm, "Please provide a fitted DeseqDataSet by first running the `deseq2` method."
 
         self.dds = dds
 
@@ -145,9 +141,7 @@ class DeseqStats:
             )
         elif isinstance(contrast, np.ndarray):
             if contrast.shape[0] != self.dds.obsm["design_matrix"].shape[1]:
-                raise ValueError(
-                    "The contrast vector must have the same length as the design matrix."
-                )
+                raise ValueError("The contrast vector must have the same length as the design matrix.")
             self.contrast = contrast
             self.contrast_vector = contrast
         else:
@@ -164,8 +158,7 @@ class DeseqStats:
                     inference.n_cpus = n_cpus
                 else:
                     warnings.warn(
-                        "The provided inference object does not have an n_cpus "
-                        "attribute, cannot override `n_cpus`.",
+                        "The provided inference object does not have an n_cpus attribute, cannot override `n_cpus`.",
                         UserWarning,
                         stacklevel=2,
                     )
@@ -218,11 +211,7 @@ class DeseqStats:
                 f"positive lfc_null value (got {lfc_null}).",
             )
 
-        if (
-            not hasattr(self, "p_values")
-            or self.lfc_null != lfc_null
-            or self.alt_hypothesis != alt_hypothesis
-        ):
+        if not hasattr(self, "p_values") or self.lfc_null != lfc_null or self.alt_hypothesis != alt_hypothesis:
             # Estimate p-values with Wald test
             self.lfc_null = lfc_null
             self.alt_hypothesis = alt_hypothesis
@@ -254,15 +243,11 @@ class DeseqStats:
         if not self.quiet:
             if isinstance(self.contrast, np.ndarray):
                 # The contrast vector was directly provided
-                print(
-                    f"Log2 fold change & Wald test p-value, contrast vector: "
-                    f"{self.contrast}"
-                )
+                print(f"Log2 fold change & Wald test p-value, contrast vector: {self.contrast}")
             else:
                 # The factor is categorical
                 print(
-                    f"Log2 fold change & Wald test p-value: "
-                    f"{self.contrast[0]} {self.contrast[1]} vs {self.contrast[2]}"
+                    f"Log2 fold change & Wald test p-value: {self.contrast[0]} {self.contrast[1]} vs {self.contrast[2]}"
                 )
             print(self.results_df)
 
@@ -283,11 +268,7 @@ class DeseqStats:
                     file=sys.stderr,
                 )
 
-        mu = (
-            np.exp(self.design_matrix @ self.LFC.T)
-            .multiply(self.dds.obs["size_factors"], 0)
-            .values
-        )
+        mu = np.exp(self.design_matrix @ self.LFC.T).multiply(self.dds.obs["size_factors"], 0).values
 
         # Set regularization factors.
         if self.prior_LFC_var is not None:
@@ -377,12 +358,7 @@ class DeseqStats:
             print(f"... done in {end - start:.2f} seconds.\n", file=sys.stderr)
 
         new_lfc_values = np.array(lfcs)[:, coeff_idx]
-        new_se_values = np.array(
-            [
-                np.sqrt(np.abs(inv_hess[coeff_idx, coeff_idx]))
-                for inv_hess in inv_hessians
-            ]
-        )
+        new_se_values = np.array([np.sqrt(np.abs(inv_hess[coeff_idx, coeff_idx])) for inv_hess in inv_hessians])
         nan_mask = ~np.isfinite(new_lfc_values) | ~np.isfinite(new_se_values)
 
         if nan_mask.any():
@@ -415,13 +391,7 @@ class DeseqStats:
                 print(f"Shrunk log2 fold change & Wald test p-value: {coeff}")
                 print(self.results_df)
 
-    def plot_MA(
-        self,
-        log: bool = True,
-        save_path: str | None = None,
-        ax: Axes | None = None,
-        **kwargs,
-    ):
+    def plot_MA(self, log: bool = True, save_path: str | None = None, ax: Axes | None = None, **kwargs):
         """
         Create an log ratio (M)-average (A) plot using matplotlib.
 
@@ -444,8 +414,7 @@ class DeseqStats:
         # Raise an error if results_df are missing
         if not hasattr(self, "results_df"):
             raise AttributeError(
-                "Trying to make an MA plot but p-values were not computed yet. "
-                "Please run the summary() method first."
+                "Trying to make an MA plot but p-values were not computed yet. Please run the summary() method first."
             )
 
         make_MA_plot(
@@ -479,9 +448,7 @@ class DeseqStats:
         theta = np.linspace(lower_quantile, upper_quantile, 50)
         cutoffs = np.quantile(base_mean, theta)
 
-        result = pd.DataFrame(
-            np.nan, index=self.dds.var_names, columns=np.arange(len(theta))
-        )
+        result = pd.DataFrame(np.nan, index=self.dds.var_names, columns=np.arange(len(theta)))
 
         for i, cutoff in enumerate(cutoffs):
             use = (self.base_mean >= cutoff) & (~self.p_values.isna())
@@ -514,9 +481,7 @@ class DeseqStats:
             self.run_wald_test()
 
         self.padj = pd.Series(np.nan, index=self.dds.var_names)
-        self.padj.loc[~self.p_values.isna()] = false_discovery_control(
-            self.p_values.dropna(), method="bh"
-        )
+        self.padj.loc[~self.p_values.isna()] = false_discovery_control(self.p_values.dropna(), method="bh")
 
     def _cooks_filtering(self) -> None:
         """Filter p-values based on Cooks outliers."""
@@ -526,9 +491,7 @@ class DeseqStats:
 
         self.p_values[self.dds.cooks_outlier()] = np.nan
 
-    def _fit_prior_var(
-        self, coeff_idx: str, min_var: float = 1e-6, max_var: float = 400.0
-    ) -> float:
+    def _fit_prior_var(self, coeff_idx: str, min_var: float = 1e-6, max_var: float = 400.0) -> float:
         """Estimate the prior variance of the apeGLM model.
 
         Returns shrinkage factors.
@@ -570,6 +533,4 @@ class DeseqStats:
         factor = self.contrast[0]
         alternative = self.contrast[1]
         ref = self.contrast[2]
-        self.contrast_vector = self.dds.contrast(
-            column=factor, baseline=ref, group_to_compare=alternative
-        )
+        self.contrast_vector = self.dds.contrast(column=factor, baseline=ref, group_to_compare=alternative)
