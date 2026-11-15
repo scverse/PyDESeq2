@@ -278,7 +278,7 @@ ds.plot_MA(s=20)
 
 # %%
 # To customize the figure, e.g. to set the axis limits, pass matplotlib axes to :meth:`plot_MA() <DeseqStats.plot_MA>`.
-# The same goes for :meth:`plot_dispersions() <DeseqDataSet.plot_dispersions>`.
+# The same goes for :meth:`plot_dispersions() <pydeseq2.dds.DeseqDataSet.plot_dispersions>`.
 
 fig, ax = plt.subplots()
 ds.plot_MA(s=20, ax=ax)
