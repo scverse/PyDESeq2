@@ -64,6 +64,16 @@ To run a single environment:
 uvx hatch run hatch-test.py3.12-stable:pytest
 ```
 
+The `hatch-test.py3.14-deseq2` environment also compares PyDESeq2 with DESeq2, which it runs through rpy2.
+It needs R and the DESeq2 version pinned in `tests/deseq2_environment.yaml`, and `R_HOME` has to point to that R installation:
+
+```bash
+conda env create --name deseq2 --file tests/deseq2_environment.yaml
+R_HOME=$(conda run --name deseq2 R RHOME) uvx hatch run hatch-test.py3.14-deseq2:pytest tests/test_r_deseq2.py
+```
+
+In the other environments, these tests are skipped.
+
 ## Building the documentation
 
 ```bash

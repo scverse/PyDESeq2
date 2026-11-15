@@ -51,6 +51,9 @@ test = [
   "pytest>=8.4",
   "pytest-cov",     # For VS Code's coverage functionality
 ]
+deseq2 = [
+  "rpy2>=3.6",
+]
 doc = [
   "docutils>=0.8,!=0.18.*,!=0.19.*",
   "gitpython>=3.1.42",
@@ -90,11 +93,16 @@ envs.hatch-test.matrix = [
   { deps = [ "stable" ], python = [ "3.12", "3.14" ] },
   # Test the newest supported Python version also with pre-release deps
   { deps = [ "pre" ], python = [ "3.14" ] },
+  # Compare with DESeq2 through rpy2, which requires R and DESeq2 to be installed
+  { deps = [ "deseq2" ], python = [ "3.14" ] },
 ]
 # If the matrix variable `deps` is set to "pre",
 # set the environment variable `UV_PRERELEASE` to "allow".
 envs.hatch-test.overrides.matrix.deps.env-vars = [
   { value = "allow", key = "UV_PRERELEASE", if = [ "pre" ] },
+]
+envs.hatch-test.overrides.matrix.deps.dependency-groups = [
+  { value = "deseq2", if = [ "deseq2" ] },
 ]
 envs.hatch-test.dependency-groups = [ "dev", "test" ]
 
