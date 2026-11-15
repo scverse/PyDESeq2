@@ -2,6 +2,7 @@
 
 import numpy as np
 from scipy.optimize import minimize  # type: ignore
+from scipy.special import expit  # type: ignore
 from scipy.special import gammaln  # type: ignore
 from scipy.special import polygamma  # type: ignore
 
@@ -240,16 +241,15 @@ def nbinomGLM(
             prior_scale**2 + beta[shrink_index] ** 2
         )
 
-        d_nll = (counts - (counts + size) / (1 + size * np.exp(-xbeta - offset))) @ design_matrix
+        d_nll = (counts - (counts + size) * expit(xbeta + offset - np.log(size))) @ design_matrix
 
         return (d_neg_prior - d_nll) / cnst
 
     def ddf(beta: np.ndarray, cnst: float = scale_cnst) -> np.ndarray:
         # Hessian of the function to optimize
         # Note: will only work if there is a single shrink index
-        xbeta = design_matrix @ beta
-        exp_xbeta_off = np.exp(xbeta + offset)
-        frac = (counts + size) * size * exp_xbeta_off / (size + exp_xbeta_off) ** 2
+        prob = expit(design_matrix @ beta + offset - np.log(size))
+        frac = (counts + size) * prob * (1 - prob)
         # Build diagonal
         h11 = 1 / prior_no_shrink_scale**2
         h22 = 2 * (prior_scale**2 - beta[shrink_index] ** 2) / (prior_scale**2 + beta[shrink_index] ** 2) ** 2
