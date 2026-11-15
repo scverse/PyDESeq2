@@ -624,6 +624,7 @@ class DeseqDataSet(ad.AnnData):
             # Only exclude all-zero genes, as DESeq2's geoMeanNZ does. A gene whose
             # positive counts are all 1 has logmeans == 0 and must be kept.
             self.filtered_genes = np.asarray((self.X > 0).any(axis=0)).ravel()
+            self.filtered_genes &= ~np.isnan(self.X).any(axis=0)
             _control_mask &= self.filtered_genes
 
             # Calculate size factor per sample
