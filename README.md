@@ -1,143 +1,62 @@
-<img src="docs/_static/pydeseq2_logo_green.png" width="600">
+<img src="https://raw.githubusercontent.com/scverse/PyDESeq2/main/docs/_static/pydeseq2_logo_green.png" width="600">
 
-#
+# PyDESeq2
 
-[![pypi version](https://img.shields.io/pypi/v/pydeseq2)](https://pypi.org/project/pydeseq2)
-[![pypiDownloads](https://static.pepy.tech/badge/pydeseq2)](https://pepy.tech/project/pydeseq2)
-[![condaDownloads](https://img.shields.io/conda/dn/bioconda/pydeseq2?logo=Anaconda)](https://anaconda.org/bioconda/pydeseq2)
-[![license](https://img.shields.io/pypi/l/pydeseq2)](LICENSE)
+[![Tests][badge-tests]][tests]
+[![Documentation][badge-docs]][documentation]
+[![PyPI][badge-pypi]][pypi]
 
-PyDESeq2 is a python implementation of the [DESeq2](https://bioconductor.org/packages/release/bioc/html/DESeq2.html)
-method [1] for differential expression analysis (DEA) with bulk RNA-seq data, originally in R.
-It aims to facilitate DEA experiments for python users.
+[badge-tests]: https://img.shields.io/github/actions/workflow/status/scverse/PyDESeq2/test.yaml?branch=main
+[badge-docs]: https://app.readthedocs.org/projects/pydeseq2/badge/
+[badge-pypi]: https://img.shields.io/pypi/v/pydeseq2
 
-As PyDESeq2 is a re-implementation of [DESeq2](https://bioconductor.org/packages/release/bioc/html/DESeq2.html) from
-scratch, you may experience some differences in terms of retrieved values or available features.
+PyDESeq2 is a Python implementation of the [DESeq2][] method for differential expression analysis with bulk RNA-seq data, originally written in R.
+It works on [AnnData][] objects and is part of the [scverse ecosystem][scverse].
 
-Currently, available features broadly correspond to the default settings of DESeq2 (v1.34.0) for single-factor and
-multi-factor analysis (with categorical or continuous factors) using Wald tests.
-We plan to implement more in the future.
-In case there is a feature you would particularly like to be implemented, feel free to open an issue.
-
-## Table of Contents
-
-- [PyDESeq2](#pydeseq2)
-  - [Table of Contents](#table-of-contents)
-  - [Installation](#installation)
-    - [Requirements](#requirements)
-  - [Getting started](#getting-started)
-    - [Documentation](#documentation)
-    - [Data](#data)
-  - [Contributing](#contributing)
-    - [1 - Download the repository](#1---download-the-repository)
-    - [2 - Create a conda environment](#2---create-a-conda-environment)
-  - [Development roadmap](#development-roadmap)
-  - [Citing this work](#citing-this-work)
-  - [References](#references)
-  - [License](#license)
-
-## Installation
-
-### PyPI
-
-`PyDESeq2` can be installed from PyPI using `pip`:
-
-```bash
-pip install pydeseq2
-```
-
-We recommend installing within a conda environment:
-
-```bash
-conda create -n pydeseq2
-conda activate pydeseq2
-conda install pip
-pip install pydeseq2
-```
-
-You can also add it to your projects through `uv`:
-
-```bash
-uv add pydeseq2
-```
-
-### Bioconda
-
-`PyDESeq2` can also be installed from Bioconda with `conda`:
-
-`conda install -c bioconda pydeseq2`
-
-If you’re interested in contributing or want access to the development version, please see the [contributing](#contributing) section.
-
-### Requirements
-
-The list of package version requirements is available in `pyproject.toml`.
-
-For reference, the code is being tested in a github workflow (CI) with python
-3.12 to 3.14 and the latest versions of the following packages:
-
-```
-- anndata
-- formulaic
-- numpy
-- pandas
-- scikit-learn
-- scipy
-- formulaic-contrasts
-- matplotlib
-```
-
-Please don’t hesitate to open an issue in case you encounter any issue due to possible deprecations.
+Current features broadly correspond to the default settings of DESeq2 for single-factor and multi-factor analysis, with categorical or continuous factors, using Wald tests, plus an optional [apeGLM][] log fold-change shrinkage step.
+Because PyDESeq2 is a reimplementation from scratch, you may see differences in retrieved values or available features.
 
 ## Getting started
 
-The [Getting Started](https://pydeseq2.readthedocs.io/en/latest/auto_examples/index.html) section of the documentation
-contains downloadable examples on how to use PyDESeq2.
+Please refer to the [documentation][], in particular the [tutorials][] and the [API documentation][].
 
-### Documentation
+## Installation
 
-The documentation is hosted [here on ReadTheDocs](https://pydeseq2.readthedocs.io/en/latest/).
-If you want to have the latest version of the documentation, you can build it from source.
-Please go to the dedicated [README.md](https://github.com/owkin/PyDESeq2/blob/main/docs/README.md) for information on how to do so.
+You need to have Python 3.12 or newer installed on your system.
+There are several options to install PyDESeq2:
 
-### Data
+1. Install the latest release of `pydeseq2` from [PyPI][]:
 
-The quick start examples use synthetic data, provided in this repo (see [datasets](https://github.com/owkin/PyDESeq2/blob/main/datasets/README.md).)
+   ```bash
+   pip install pydeseq2
+   ```
 
-The experiments described in the [PyDESeq2 article](https://academic.oup.com/bioinformatics/article/39/9/btad547/7260507) rely on data
-from [The Cancer Genome Atlas](https://www.cancer.gov/about-nci/organization/ccg/research/structural-genomics/tcga),
-which may be obtained from this [portal](https://portal.gdc.cancer.gov/).
+2. Install the latest release from [Bioconda][]:
 
-## Contributing
+   ```bash
+   conda install bioconda::pydeseq2
+   ```
 
-Please the [Contributing](https://pydeseq2.readthedocs.io/en/latest/usage/contributing.html) section of the
-documentation to see how you can contribute to PyDESeq2.
+3. Install the latest development version:
 
-### 1 - Download the repository
+   ```bash
+   pip install git+https://github.com/scverse/PyDESeq2.git@main
+   ```
 
-`git clone https://github.com/owkin/PyDESeq2.git`
+## Release notes
 
-### 2 - Create a uv environment
+See the [release notes on GitHub][changelog].
 
-Run `uv venv --python 3.13` (or higher python version) to create the `pydeseq2` environment and then activate it:
-`source .venv/bin/activate`.
+## Contact
 
-`cd` to the root of the repo and run `uv sync --extra dev --extra doc` to install in developer mode.
+For questions and help requests, you can reach out in the [scverse discourse][].
+If you found a bug, please use the [issue tracker][].
 
-Then, run `pre-commit install`.
+## Citation
 
-The `pre-commit` tool will automatically run [ruff](https://docs.astral.sh/ruff/), [black](https://black.readthedocs.io/en/stable/), and [mypy](https://mypy.readthedocs.io/en/stable/).
+If you use PyDESeq2, please cite the PyDESeq2 paper:
 
-PyDESeq2 is a living project and any contributions are welcome! Feel free to open new PRs or issues.
-
-## Credits
-
-PyDESeq2 has been originally developed by Boris Muzellec, Maria Teleńczuk, Vincent Cabeli, and Mathieu Andreux and funded by [Owkin](https://www.owkin.com/).
-In Dec 2025, the maintenance of PyDESeq2 was taken over by the scverse community.
-
-## Citing this work
-
-```
+```bibtex
 @article{muzellec2023pydeseq2,
   title={PyDESeq2: a python package for bulk RNA-seq differential expression analysis},
   author={Muzellec, Boris and Telenczuk, Maria and Cabeli, Vincent and Andreux, Mathieu},
@@ -147,18 +66,25 @@ In Dec 2025, the maintenance of PyDESeq2 was taken over by the scverse community
 }
 ```
 
-## References
+The [citation page][] of the documentation lists the methods that PyDESeq2 implements.
 
-[1] Love, M. I., Huber, W., & Anders, S. (2014). “Moderated estimation of fold
-        change and dispersion for RNA-seq data with DESeq2.” Genome biology, 15(12), 1-21.
-        <https://genomebiology.biomedcentral.com/articles/10.1186/s13059-014-0550-8>
+## Credits
 
-[2] Zhu, A., Ibrahim, J. G., & Love, M. I. (2019).
-        “Heavy-tailed prior distributions for sequence count data:
-        removing the noise and preserving large differences.”
-        Bioinformatics, 35(12), 2084-2092.
-        <https://academic.oup.com/bioinformatics/article/35/12/2084/5159452>
+PyDESeq2 has been originally developed by Boris Muzellec, Maria Teleńczuk, Vincent Cabeli, and Mathieu Andreux and funded by [Owkin][].
+In Dec 2025, the maintenance of PyDESeq2 was taken over by the scverse community.
 
-## License
-
-PyDESeq2 is released under an [MIT license](https://github.com/owkin/PyDESeq2/blob/main/LICENSE).
+[deseq2]: https://bioconductor.org/packages/release/bioc/html/DESeq2.html
+[anndata]: https://anndata.readthedocs.io
+[scverse]: https://scverse.org
+[apeglm]: https://academic.oup.com/bioinformatics/article/35/12/2084/5159452
+[tests]: https://github.com/scverse/PyDESeq2/actions/workflows/test.yaml
+[documentation]: https://pydeseq2.readthedocs.io
+[tutorials]: https://pydeseq2.readthedocs.io/en/latest/auto_examples/index.html
+[api documentation]: https://pydeseq2.readthedocs.io/en/latest/api.html
+[citation page]: https://pydeseq2.readthedocs.io/en/latest/about/cite.html
+[pypi]: https://pypi.org/project/pydeseq2
+[bioconda]: https://anaconda.org/bioconda/pydeseq2
+[changelog]: https://github.com/scverse/PyDESeq2/releases
+[scverse discourse]: https://discourse.scverse.org/
+[issue tracker]: https://github.com/scverse/PyDESeq2/issues
+[owkin]: https://www.owkin.com/
