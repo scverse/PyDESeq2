@@ -261,6 +261,7 @@ class DeseqDataSet(ad.AnnData):
 
         # Check that the design matrix has full rank
         self._check_full_rank_design()
+        self._check_design_scale()
 
         self.min_mu = min_mu
         self.min_disp = min_disp
@@ -1489,4 +1490,18 @@ class DeseqDataSet(ad.AnnData):
                 "variables that are linear combinations of others.",
                 UserWarning,
                 stacklevel=2,
+            )
+
+    def _check_design_scale(self):
+        """Check that the columns of the design matrix do not take large values."""
+        design_matrix = self.obsm["design_matrix"]
+        large = design_matrix.columns[(design_matrix.mean().abs() > 5) | (design_matrix.std() > 5)]
+
+        if len(large) > 0:
+            warnings.warn(
+                f"The columns {list(large)} of the design matrix have a mean or a standard deviation "
+                "larger than 5, which can make the model fits overflow or fail to converge. "
+                "Please center and scale the corresponding continuous covariates.",
+                UserWarning,
+                stacklevel=3,
             )
