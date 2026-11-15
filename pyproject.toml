@@ -15,6 +15,7 @@ authors = [
   { name = "Maria Telenczuk" },
   { name = "Vincent Cabelli" },
   { name = "Mathieu Andreux" },
+  { name = "Lukas Heumos" },
 ]
 requires-python = ">=3.12"
 classifiers = [
