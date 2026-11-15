@@ -1,5 +1,6 @@
 """Estimation of gene-wise and trended dispersions."""
 
+from collections.abc import Mapping
 from typing import Literal
 from typing import cast
 
@@ -17,7 +18,7 @@ from pydeseq2.stats import trimmed_mean
 
 def dispersion_trend(
     normed_mean: float | np.ndarray,
-    coeffs: pd.Series | np.ndarray,
+    coeffs: Mapping[str, float] | pd.Series | np.ndarray,
 ) -> float | np.ndarray:
     r"""Return dispersion trend from normalized counts.
 
@@ -34,7 +35,7 @@ def dispersion_trend(
     -------
     Dispersion trend :math:`a_1/ \mu + a_0`.
     """
-    if isinstance(coeffs, pd.Series):
+    if isinstance(coeffs, (Mapping, pd.Series)):
         return coeffs["a0"] + coeffs["a1"] / normed_mean
     else:
         return coeffs[0] + coeffs[1] / normed_mean

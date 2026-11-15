@@ -425,7 +425,8 @@ class DeseqDataSet(ad.AnnData):
             if "vst_trend_coeffs" not in self.uns:
                 raise RuntimeError("Fit the dispersion curve prior to applying VST.")
 
-            a0, a1 = self.uns["vst_trend_coeffs"]
+            a0 = self.uns["vst_trend_coeffs"]["a0"]
+            a1 = self.uns["vst_trend_coeffs"]["a1"]
             return np.log2(
                 (1 + a1 + 2 * a0 * normed_counts + 2 * np.sqrt(a0 * normed_counts * (1 + a1 + a0 * normed_counts)))
                 / (4 * a0)
@@ -1131,10 +1132,12 @@ class DeseqDataSet(ad.AnnData):
             targets = targets.drop(targets[(pred_ratios < 1e-4) | (pred_ratios >= 15)].index)
             covariates = covariates.drop(covariates[(pred_ratios < 1e-4) | (pred_ratios >= 15)].index)
 
+        # Store the coefficients as a plain dict so the object can be written to h5ad
+        trend_coeffs = {"a0": float(coeffs[0]), "a1": float(coeffs[1])}
         if vst:
-            self.uns["vst_trend_coeffs"] = pd.Series(coeffs, index=["a0", "a1"])
+            self.uns["vst_trend_coeffs"] = trend_coeffs
         else:
-            self.uns["trend_coeffs"] = pd.Series(coeffs, index=["a0", "a1"])
+            self.uns["trend_coeffs"] = trend_coeffs
 
             self.var["fitted_dispersions"] = np.full(self.n_vars, np.nan)
             self.uns["disp_function_type"] = "parametric"
