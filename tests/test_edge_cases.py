@@ -1,3 +1,4 @@
+import anndata as ad
 import numpy as np
 import pandas as pd
 import pytest
@@ -51,15 +52,86 @@ def test_zero_genes():
 
 
 # Tests on the count matrix
-def test_nan_counts():
-    """Test that a ValueError is thrown when the count matrix contains NaNs."""
-    counts_df = pd.DataFrame(
-        {"gene1": [0, np.nan], "gene2": [4, 12]}, index=["sample1", "sample2"]
-    )
-    metadata = pd.DataFrame({"condition": [0, 1]}, index=["sample1", "sample2"])
+@pytest.mark.parametrize("from_adata", [False, True])
+@pytest.mark.parametrize("size_factors_fit_type", ["ratio", "poscounts", "iterative"])
+def test_nan_counts(size_factors_fit_type, from_adata):
+    """Test that genes with NaN counts are ignored, and that NaNs are returned."""
+    counts_df = load_example_data(
+        modality="raw_counts",
+        dataset="synthetic",
+        debug=False,
+    ).astype(float)
 
-    with pytest.raises(ValueError):
-        DeseqDataSet(counts=counts_df, metadata=metadata, design="~condition")
+    metadata = load_example_data(
+        modality="metadata",
+        dataset="synthetic",
+        debug=False,
+    )
+
+    # Subset samples for speed
+    metadata = metadata.loc[[f"sample{i}" for i in [*range(1, 11), *range(91, 101)]]]
+    counts_df = counts_df.loc[metadata.index]
+
+    # Introduce NaNs in a few genes
+    nan_genes = counts_df.columns[[1, 5]]
+    counts_df.loc["sample1", nan_genes[0]] = np.nan
+    counts_df[nan_genes[1]] = np.nan
+
+    def run_analysis(counts):
+        kwargs = (
+            {"adata": ad.AnnData(X=counts, obs=metadata)}
+            if from_adata
+            else {"counts": counts, "metadata": metadata}
+        )
+        dds = DeseqDataSet(
+            **kwargs, design="~condition", size_factors_fit_type=size_factors_fit_type
+        )
+        dds.deseq2()
+        ds = DeseqStats(dds, contrast=["condition", "B", "A"])
+        ds.summary()
+        return dds, ds.results_df
+
+    with pytest.warns(UserWarning, match="The count matrix contains NaNs"):
+        dds, results_df = run_analysis(counts_df)
+
+    # check that the corresponding parameters and stats are NaN
+    assert np.isnan(dds.var.loc[nan_genes, "dispersions"]).all()
+    assert np.isnan(dds[:, nan_genes].varm["LFC"]).all().all()
+    assert results_df.loc[nan_genes].isna().all().all()
+
+    # check that the other genes are fitted as if the NaN genes were not there
+    _, expected_results_df = run_analysis(counts_df.drop(columns=nan_genes))
+    pd.testing.assert_frame_equal(results_df.drop(index=nan_genes), expected_results_df)
+
+
+def test_nan_counts_zero_inflated():
+    """Test that size factors are fitted iteratively when each gene has a zero or a NaN."""
+    counts_df = load_example_data(
+        modality="raw_counts",
+        dataset="synthetic",
+        debug=False,
+    ).astype(float)
+
+    metadata = load_example_data(
+        modality="metadata",
+        dataset="synthetic",
+        debug=False,
+    )
+
+    # Subset samples for speed
+    metadata = metadata.loc[[f"sample{i}" for i in [*range(1, 11), *range(91, 101)]]]
+    counts_df = counts_df.loc[metadata.index]
+
+    # Each gene has a zero, except the first one which only has NaNs
+    counts_df.loc["sample1"] = 0
+    counts_df[counts_df.columns[0]] = np.nan
+
+    with pytest.warns(UserWarning, match="The count matrix contains NaNs"):
+        dds = DeseqDataSet(counts=counts_df, metadata=metadata, design="~condition")
+    with pytest.warns(UserWarning, match="Every gene contains at least one zero"):
+        dds.fit_size_factors()
+
+    assert np.isfinite(dds.obs["size_factors"]).all()
 
 
 def test_numeric_counts():
