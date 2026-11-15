@@ -99,7 +99,7 @@ envs.hatch-test.overrides.matrix.deps.env-vars = [
 envs.hatch-test.dependency-groups = [ "dev", "test" ]
 
 [tool.ruff]
-line-length = 89
+line-length = 120
 src = [ "src" ]
 extend-include = [ "*.ipynb" ]
 format.docstring-code-format = true

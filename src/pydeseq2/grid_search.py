@@ -4,9 +4,7 @@ from scipy.special import gammaln  # type: ignore
 import pydeseq2.distributions
 
 
-def vec_nb_nll(
-    counts: np.ndarray, mu: np.ndarray, alpha: np.ndarray | float
-) -> np.ndarray:
+def vec_nb_nll(counts: np.ndarray, mu: np.ndarray, alpha: np.ndarray | float) -> np.ndarray:
     r"""Return the negative log-likelihood of a negative binomial.
 
     Vectorized version.
@@ -26,11 +24,7 @@ def vec_nb_nll(
     """
     n = len(counts)
     alpha_neg1 = 1 / alpha
-    logbinom = (
-        gammaln(counts[:, None] + alpha_neg1)
-        - gammaln(counts + 1)[:, None]
-        - gammaln(alpha_neg1)
-    )
+    logbinom = gammaln(counts[:, None] + alpha_neg1) - gammaln(counts + 1)[:, None] - gammaln(alpha_neg1)
 
     if len(mu.shape) == 1:
         return n * alpha_neg1 * np.log(alpha) + (
@@ -40,9 +34,7 @@ def vec_nb_nll(
         ).sum(axis=0)
     else:
         return n * alpha_neg1 * np.log(alpha) + (
-            -logbinom
-            + (counts[:, None] + alpha_neg1) * np.log(mu + alpha_neg1)
-            - (counts[:, None] * np.log(mu))
+            -logbinom + (counts[:, None] + alpha_neg1) * np.log(mu + alpha_neg1) - (counts[:, None] * np.log(mu))
         ).sum(axis=0)
 
 
@@ -99,17 +91,10 @@ def grid_fit_alpha(
         W = mu[:, None] / (1 + mu[:, None] * alpha)
         reg = 0
         if cr_reg:
-            reg += (
-                0.5
-                * np.linalg.slogdet(
-                    (design_matrix.T[:, :, None] * W).transpose(2, 0, 1) @ design_matrix
-                )[1]
-            )
+            reg += 0.5 * np.linalg.slogdet((design_matrix.T[:, :, None] * W).transpose(2, 0, 1) @ design_matrix)[1]
         if prior_reg:
             if prior_disp_var is None:
-                raise NotImplementedError(
-                    "If you use prior_reg, you need to specify prior_disp_var"
-                )
+                raise NotImplementedError("If you use prior_reg, you need to specify prior_disp_var")
 
             reg += (np.log(alpha) - np.log(alpha_hat)) ** 2 / (2 * prior_disp_var)
         return vec_nb_nll(counts, mu, alpha) + reg
@@ -179,9 +164,7 @@ def grid_fit_beta(
     min_idxs = np.unravel_index(np.argmin(ll_grid, axis=None), ll_grid.shape)
     delta = x_grid[1] - x_grid[0]
 
-    fine_x_grid = np.linspace(
-        x_grid[min_idxs[0]] - delta, x_grid[min_idxs[0]] + delta, grid_length
-    )
+    fine_x_grid = np.linspace(x_grid[min_idxs[0]] - delta, x_grid[min_idxs[0]] + delta, grid_length)
 
     fine_y_grid = np.linspace(
         y_grid[min_idxs[1]] - delta,
@@ -270,9 +253,7 @@ def grid_fit_shrink_beta(
     min_idxs = np.unravel_index(np.argmin(ll_grid, axis=None), ll_grid.shape)
     delta = x_grid[1] - x_grid[0]
 
-    fine_x_grid = np.linspace(
-        x_grid[min_idxs[0]] - delta, x_grid[min_idxs[0]] + delta, grid_length
-    )
+    fine_x_grid = np.linspace(x_grid[min_idxs[0]] - delta, x_grid[min_idxs[0]] + delta, grid_length)
 
     fine_y_grid = np.linspace(
         y_grid[min_idxs[1]] - delta,
