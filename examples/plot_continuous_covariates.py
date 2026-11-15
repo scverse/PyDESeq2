@@ -19,9 +19,7 @@ from pydeseq2.ds import DeseqStats
 # We use a synthetic dataset of 100 samples and 10 genes, in which the expression of some genes depends on a continuous covariate called ``measurement``.
 # As in the :doc:`pandas IO example <plot_pandas_io_example>`, the counts and the metadata are read from CSV files.
 
-DATA_PATH = (
-    "https://raw.githubusercontent.com/scverse/PyDESeq2/main/tests/data/continuous/"
-)
+DATA_PATH = "https://raw.githubusercontent.com/scverse/PyDESeq2/main/tests/data/continuous/"
 
 counts_df = pd.read_csv(DATA_PATH + "test_counts.csv", index_col=0).T
 metadata = pd.read_csv(DATA_PATH + "test_metadata.csv", index_col=0)

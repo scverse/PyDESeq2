@@ -2,6 +2,7 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 import pytest
+from matplotlib import pyplot as plt
 
 from pydeseq2.datasets import load_example_data
 from pydeseq2.dds import DeseqDataSet
@@ -570,3 +571,31 @@ def test_plot_MA():
     ds.summary()
     # Now this shouldn't throw an error
     ds.plot_MA()
+
+
+def test_plot_ax():
+    """Test that plots are drawn on the provided axes, without creating a new figure."""
+    counts_df = load_example_data(
+        modality="raw_counts",
+        dataset="synthetic",
+        debug=False,
+    )
+
+    metadata = load_example_data(
+        modality="metadata",
+        dataset="synthetic",
+        debug=False,
+    )
+
+    dds = DeseqDataSet(counts=counts_df, metadata=metadata)
+    dds.deseq2()
+    ds = DeseqStats(dds, contrast=["condition", "B", "A"])
+    ds.summary()
+
+    _, axes = plt.subplots(ncols=2)
+    fignums = plt.get_fignums()
+    dds.plot_dispersions(ax=axes[0])
+    ds.plot_MA(ax=axes[1])
+
+    assert plt.get_fignums() == fignums
+    assert all(ax.collections for ax in axes)

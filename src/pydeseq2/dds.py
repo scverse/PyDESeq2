@@ -11,6 +11,7 @@ import anndata as ad  # type: ignore
 import numpy as np
 import pandas as pd
 from formulaic_contrasts import FormulaicContrasts  # type: ignore[import-untyped]
+from matplotlib.axes import Axes
 from scipy.optimize import minimize
 from scipy.special import polygamma  # type: ignore
 from scipy.stats import f  # type: ignore
@@ -1045,7 +1046,9 @@ class DeseqDataSet(ad.AnnData):
         self.var["_MoM_dispersions"] = np.full(self.n_vars, np.nan)
         self.var.loc[self.var["non_zero"], "_MoM_dispersions"] = np.clip(alpha_hat, self.min_disp, self.max_disp)
 
-    def plot_dispersions(self, log: bool = True, save_path: str | None = None, **kwargs) -> None:
+    def plot_dispersions(
+        self, log: bool = True, save_path: str | None = None, ax: Axes | None = None, **kwargs
+    ) -> None:
         """Plot dispersions.
 
         Make a scatter plot with genewise dispersions, trend curve and final (MAP) dispersions.
@@ -1057,6 +1060,9 @@ class DeseqDataSet(ad.AnnData):
         save_path
             The path where to save the plot.
             If left None, the plot won't be saved (``default=None``).
+        ax
+            The axes to plot on.
+            If left None, a new figure is created and shown (``default=None``).
         **kwargs
             Keyword arguments for the scatter plot.
         """
@@ -1072,6 +1078,7 @@ class DeseqDataSet(ad.AnnData):
             x_val=self.var["_normed_means"].to_numpy(),
             log=log,
             save_path=save_path,
+            ax=ax,
             **kwargs,
         )
 
