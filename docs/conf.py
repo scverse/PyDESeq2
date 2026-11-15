@@ -54,11 +54,7 @@ html_css_files = ["css/custom.css"]
 html_logo = "_static/pydeseq2_logo.svg"
 html_favicon = "_static/favicon.ico"
 html_show_sourcelink = False
-# The logo greens, as in scverse/scverse.github.io#380; switch to `{"secondary_accent": True}` once scverse-doc's registry has them.
-html_theme_options = {
-    "accent": "oklch(0.676 0.189 145.9)",
-    "secondary_accent": "oklch(0.521 0.17 143.3)",
-}
+html_theme_options = {"secondary_accent": True}
 
 nitpick_ignore = [
     # anndata re-exports AnnData from a private submodule; autodoc resolves the
