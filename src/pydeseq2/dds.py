@@ -245,7 +245,6 @@ class DeseqDataSet(ad.AnnData):
             # Keep track of the categorical factors used in the model specification,
             # including variable and factor names, by generating a custom materializer.
             self.formulaic_contrasts = FormulaicContrasts(self.obs, self.design)
-            # anndata cannot write formulaic's ModelMatrix to h5ad
             self.obsm["design_matrix"] = pd.DataFrame(self.formulaic_contrasts.design_matrix)
         else:
             self.obsm["design_matrix"] = self.design
@@ -1133,7 +1132,6 @@ class DeseqDataSet(ad.AnnData):
             targets = targets.drop(targets[(pred_ratios < 1e-4) | (pred_ratios >= 15)].index)
             covariates = covariates.drop(covariates[(pred_ratios < 1e-4) | (pred_ratios >= 15)].index)
 
-        # Store the coefficients as a plain dict so the object can be written to h5ad
         trend_coeffs = {"a0": float(coeffs[0]), "a1": float(coeffs[1])}
         if vst:
             self.uns["vst_trend_coeffs"] = trend_coeffs
