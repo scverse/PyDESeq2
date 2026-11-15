@@ -144,6 +144,8 @@ ini_options.filterwarnings = [
   # ignore Pyarrow deprecation warnings
   'ignore:\s*Pyarrow will become a required dependency of pandas:DeprecationWarning',
   'ignore:\s*Setting an item of incompatible dtype:FutureWarning',
+  # raised inside anndata<=0.13.4, remove once anndata>=0.13.5 (scverse/anndata#2671)
+  'ignore:The .future\.infer_string. option is deprecated:DeprecationWarning',
 ]
 
 [tool.coverage]
