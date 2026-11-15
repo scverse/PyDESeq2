@@ -75,10 +75,20 @@ jobs:
         with:
           python-version: ${{ matrix.env.python }}
       - name: Install R and DESeq2
+        id: deseq2
         if: endsWith(matrix.env.name, '-deseq2')
-        run: |
-          "$CONDA/bin/conda" env create --prefix "$RUNNER_TEMP/deseq2" --file tests/deseq2_environment.yaml
-          echo "R_HOME=$RUNNER_TEMP/deseq2/lib/R" >> "$GITHUB_ENV"
+        uses: mamba-org/setup-micromamba@f457c30a868e4760d3a6fcea5f25dc655b8edf39 # v3.2.1
+        with:
+          environment-file: tests/deseq2_environment.yaml
+          environment-name: deseq2
+          cache-environment: true
+          init-shell: none
+          generate-run-shell: false
+      - name: Point rpy2 to R
+        if: endsWith(matrix.env.name, '-deseq2')
+        env:
+          ENVIRONMENT_PATH: ${{ steps.deseq2.outputs.environment-path }}
+        run: echo "R_HOME=$ENVIRONMENT_PATH/lib/R" >> "$GITHUB_ENV"
       - name: create hatch environment
         run: uvx hatch env create ${{ matrix.env.name }}
       - name: list all all installed package versions
