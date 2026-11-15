@@ -188,6 +188,15 @@ def test_nan_factors():
         DeseqDataSet(counts=counts_df, metadata=metadata, design="~condition")
 
 
+def test_large_covariate():
+    """Test that a warning is thrown when a continuous covariate takes large values."""
+    counts_df = pd.DataFrame({"gene1": [0, 1, 55, 3], "gene2": [4, 12, 60, 4]}, index=[f"sample{i}" for i in range(4)])
+    metadata = pd.DataFrame({"age": [30.0, 45.0, 52.0, 68.0]}, index=counts_df.index)
+
+    with pytest.warns(UserWarning, match=r"The columns \['age'\] of the design matrix"):
+        DeseqDataSet(counts=counts_df, metadata=metadata, design="~age")
+
+
 def test_one_factor():
     """Test that a ValueError is thrown when the design factor takes only one value."""
     counts_df = pd.DataFrame({"gene1": [0, 1], "gene2": [4, 12]}, index=["sample1", "sample2"])

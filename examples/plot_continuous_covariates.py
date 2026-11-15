@@ -49,6 +49,11 @@ dds.obsm["design_matrix"]
 # .. note::
 #   To treat a numeric column as categorical, e.g. a batch number, wrap it in ``C()`` in the formula, as in ``"~C(batch) + measurement"``.
 #
+# .. note::
+#   Covariates that take large values, such as an age in years, make the model fits numerically unstable.
+#   Center and scale them beforehand, for instance with ``(x - x.mean()) / x.std()``.
+#   PyDESeq2 warns when a column of the design matrix has a mean or a standard deviation larger than 5.
+#
 # Dispersions and LFCs are then fitted as usual.
 
 dds.deseq2()
