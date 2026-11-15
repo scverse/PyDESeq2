@@ -93,26 +93,18 @@ def test_size_factors_poscounts_keeps_genes_with_unit_counts():
     dds.fit_size_factors("poscounts")
 
     assert dds.filtered_genes.all()
-    np.testing.assert_array_almost_equal(
-        dds.obs["size_factors"], [0.672073, 1.335417, 0.917367, 1.214572]
-    )
+    np.testing.assert_array_almost_equal(dds.obs["size_factors"], [0.672073, 1.335417, 0.917367, 1.214572])
 
     # Without the gene, the size factors change: it is not dropped silently.
-    dds_without = DeseqDataSet(
-        counts=counts.drop(columns="ones"), metadata=metadata, design="~condition"
-    )
+    dds_without = DeseqDataSet(counts=counts.drop(columns="ones"), metadata=metadata, design="~condition")
     dds_without.fit_size_factors("poscounts")
-    np.testing.assert_array_almost_equal(
-        dds_without.obs["size_factors"], [0.478107, 1.213430, 1.390664, 1.239476]
-    )
+    np.testing.assert_array_almost_equal(dds_without.obs["size_factors"], [0.478107, 1.213430, 1.390664, 1.239476])
 
 
 def test_size_factors_control_genes(counts_df, metadata):
     """Test that the size_factors calculation properly takes control_genes"""
 
-    dds = DeseqDataSet(
-        counts=counts_df, metadata=metadata, design="~condition", control_genes=["gene4"]
-    )
+    dds = DeseqDataSet(counts=counts_df, metadata=metadata, design="~condition", control_genes=["gene4"])
 
     dds.fit_size_factors()
 
@@ -180,17 +172,13 @@ def test_deseq_independent_filtering_mean_fit(counts_df, metadata, tol=0.02):
     assert_res_almost_equal(ds.results_df, r_res, tol)
 
 
-def test_deseq_without_independent_filtering_parametric_fit(
-    counts_df, metadata, tol=0.02
-):
+def test_deseq_without_independent_filtering_parametric_fit(counts_df, metadata, tol=0.02):
     """Test that the outputs of the DESeq2 function match those of the original R package, up to a tolerance in relative error, with a parametric fit and no independent filtering."""
 
     test_path = str(Path(os.path.realpath(tests.__file__)).parent.resolve())
 
     r_res = pd.read_csv(
-        os.path.join(
-            test_path, "data/single_factor/r_test_res_no_independent_filtering.csv"
-        ),
+        os.path.join(test_path, "data/single_factor/r_test_res_no_independent_filtering.csv"),
         index_col=0,
     )
 
@@ -220,9 +208,7 @@ def test_alt_hypothesis(alt_hypothesis, counts_df, metadata, tol=0.02):
         index_col=0,
     )
 
-    dds = DeseqDataSet(
-        counts=counts_df, metadata=metadata, design="~condition", n_cpus=2
-    )
+    dds = DeseqDataSet(counts=counts_df, metadata=metadata, design="~condition", n_cpus=2)
     dds.deseq2()
 
     ds = DeseqStats(
@@ -239,18 +225,13 @@ def test_alt_hypothesis(alt_hypothesis, counts_df, metadata, tol=0.02):
     assert (ds.results_df.padj.isna() == r_res.padj.isna()).all()
 
     # Check that the same LFC and Wald statistics are found (up to tol)
-    assert (
-        abs(r_res.log2FoldChange - ds.results_df.log2FoldChange)
-        / abs(r_res.log2FoldChange)
-    ).max() < tol
+    assert (abs(r_res.log2FoldChange - ds.results_df.log2FoldChange) / abs(r_res.log2FoldChange)).max() < tol
     if alt_hypothesis == "lessAbs":
         ds.results_df.stat = ds.results_df.stat.abs()
     assert (abs(r_res.stat - ds.results_df.stat) / abs(r_res.stat)).max() < tol
     # Check for the same pvalue and padj where stat != 0
     assert (
-        abs(
-            r_res.pvalue[r_res.stat != 0] - ds.results_df.pvalue[ds.results_df.stat != 0]
-        )
+        abs(r_res.pvalue[r_res.stat != 0] - ds.results_df.pvalue[ds.results_df.stat != 0])
         / r_res.pvalue[r_res.stat != 0]
     ).max() < tol
 
@@ -262,9 +243,7 @@ def test_deseq_no_refit_cooks(counts_df, metadata, tol=0.02):
 
     test_path = str(Path(os.path.realpath(tests.__file__)).parent.resolve())
 
-    r_res = pd.read_csv(
-        os.path.join(test_path, "data/single_factor/r_test_res.csv"), index_col=0
-    )
+    r_res = pd.read_csv(os.path.join(test_path, "data/single_factor/r_test_res.csv"), index_col=0)
 
     dds = DeseqDataSet(
         counts=counts_df,
@@ -285,9 +264,7 @@ def test_lfc_shrinkage(counts_df, metadata, tol=0.02):
     """Test that the outputs of the lfc_shrink function match those of the original R package (starting from the same inputs), up to a tolerance in relative error."""
 
     test_path = str(Path(os.path.realpath(tests.__file__)).parent.resolve())
-    r_res = pd.read_csv(
-        os.path.join(test_path, "data/single_factor/r_test_res.csv"), index_col=0
-    )
+    r_res = pd.read_csv(os.path.join(test_path, "data/single_factor/r_test_res.csv"), index_col=0)
     r_shrunk_res = pd.read_csv(
         os.path.join(test_path, "data/single_factor/r_test_lfc_shrink_res.csv"),
         index_col=0,
@@ -316,23 +293,16 @@ def test_lfc_shrinkage(counts_df, metadata, tol=0.02):
     shrunk_res = res.results_df
 
     # Check that the same LFC are found (up to tol)
-    assert (
-        abs(r_shrunk_res.log2FoldChange - shrunk_res.log2FoldChange)
-        / abs(r_shrunk_res.log2FoldChange)
-    ).max() < tol
+    assert (abs(r_shrunk_res.log2FoldChange - shrunk_res.log2FoldChange) / abs(r_shrunk_res.log2FoldChange)).max() < tol
 
 
 def test_lfc_shrinkage_no_apeAdapt(counts_df, metadata, tol=0.02):
     """Test that the outputs of the lfc_shrink function match those of the original R package (starting from the same inputs), up to a tolerance in relative error."""
 
     test_path = str(Path(os.path.realpath(tests.__file__)).parent.resolve())
-    r_res = pd.read_csv(
-        os.path.join(test_path, "data/single_factor/r_test_res.csv"), index_col=0
-    )
+    r_res = pd.read_csv(os.path.join(test_path, "data/single_factor/r_test_res.csv"), index_col=0)
     r_shrunk_res = pd.read_csv(
-        os.path.join(
-            test_path, "data/single_factor/r_test_lfc_shrink_no_apeAdapt_res.csv"
-        ),
+        os.path.join(test_path, "data/single_factor/r_test_lfc_shrink_no_apeAdapt_res.csv"),
         index_col=0,
     )
 
@@ -359,10 +329,7 @@ def test_lfc_shrinkage_no_apeAdapt(counts_df, metadata, tol=0.02):
     shrunk_res = res.results_df
 
     # Check that the same LFC are found (up to tol)
-    assert (
-        abs(r_shrunk_res.log2FoldChange - shrunk_res.log2FoldChange)
-        / abs(r_shrunk_res.log2FoldChange)
-    ).max() < tol
+    assert (abs(r_shrunk_res.log2FoldChange - shrunk_res.log2FoldChange) / abs(r_shrunk_res.log2FoldChange)).max() < tol
 
 
 def test_iterative_size_factors(counts_df, metadata, tol=0.02):
@@ -379,19 +346,14 @@ def test_iterative_size_factors(counts_df, metadata, tol=0.02):
     dds._fit_iterate_size_factors()
 
     # Check that the same LFC are found (up to tol)
-    assert (
-        abs(r_size_factors.values - dds.obs["size_factors"].values)
-        / abs(r_size_factors.values)
-    ).max() < tol
+    assert (abs(r_size_factors.values - dds.obs["size_factors"].values) / abs(r_size_factors.values)).max() < tol
 
 
 def test_lfc_shrinkage_large_counts(counts_df, metadata, tol=0.02):
     """Test that the outputs of the lfc_shrink function match those of the original R package (starting from the same inputs), up to a tolerance in relative error in the presence of a gene with very large counts."""
 
     test_path = str(Path(os.path.realpath(tests.__file__)).parent.resolve())
-    r_res = pd.read_csv(
-        os.path.join(test_path, "data/large_counts/r_test_res.csv"), index_col=0
-    )
+    r_res = pd.read_csv(os.path.join(test_path, "data/large_counts/r_test_res.csv"), index_col=0)
     r_shrunk_res = pd.read_csv(
         os.path.join(test_path, "data/large_counts/r_test_lfc_shrink_res.csv"),
         index_col=0,
@@ -442,10 +404,7 @@ def test_lfc_shrinkage_large_counts(counts_df, metadata, tol=0.02):
     shrunk_res = res.results_df
 
     # Check that the same LFC are found (up to tol)
-    assert (
-        abs(r_shrunk_res.log2FoldChange - shrunk_res.log2FoldChange)
-        / abs(r_shrunk_res.log2FoldChange)
-    ).max() < tol
+    assert (abs(r_shrunk_res.log2FoldChange - shrunk_res.log2FoldChange) / abs(r_shrunk_res.log2FoldChange)).max() < tol
 
 
 # Multi-factor tests
@@ -487,9 +446,7 @@ def test_multifactor_lfc_shrinkage(counts_df, metadata, tol=0.02):
     """Test that the outputs of the lfc_shrink function match those of the original R package (starting from the same inputs), up to a tolerance in relative error."""
 
     test_path = str(Path(os.path.realpath(tests.__file__)).parent.resolve())
-    r_res = pd.read_csv(
-        os.path.join(test_path, "data/multi_factor/r_test_res.csv"), index_col=0
-    )
+    r_res = pd.read_csv(os.path.join(test_path, "data/multi_factor/r_test_res.csv"), index_col=0)
     r_shrunk_res = pd.read_csv(
         os.path.join(test_path, "data/multi_factor/r_test_lfc_shrink_res.csv"),
         index_col=0,
@@ -517,10 +474,7 @@ def test_multifactor_lfc_shrinkage(counts_df, metadata, tol=0.02):
     shrunk_res = res.results_df
 
     # Check that the same LFC found (up to tol)
-    assert (
-        abs(r_shrunk_res.log2FoldChange - shrunk_res.log2FoldChange)
-        / abs(r_shrunk_res.log2FoldChange)
-    ).max() < tol
+    assert (abs(r_shrunk_res.log2FoldChange - shrunk_res.log2FoldChange) / abs(r_shrunk_res.log2FoldChange)).max() < tol
 
 
 # Continuous tests
@@ -533,13 +487,9 @@ def test_continuous_deseq(
 
     test_path = str(Path(os.path.realpath(tests.__file__)).parent.resolve())
 
-    counts_df = pd.read_csv(
-        os.path.join(test_path, "data/continuous/test_counts.csv"), index_col=0
-    ).T
+    counts_df = pd.read_csv(os.path.join(test_path, "data/continuous/test_counts.csv"), index_col=0).T
 
-    metadata = pd.read_csv(
-        os.path.join(test_path, "data/continuous/test_metadata.csv"), index_col=0
-    )
+    metadata = pd.read_csv(os.path.join(test_path, "data/continuous/test_metadata.csv"), index_col=0)
 
     # Load R results
     if with_outliers:
@@ -548,9 +498,7 @@ def test_continuous_deseq(
             index_col=0,
         )
     else:
-        r_res = pd.read_csv(
-            os.path.join(test_path, "data/continuous/r_test_res.csv"), index_col=0
-        )
+        r_res = pd.read_csv(os.path.join(test_path, "data/continuous/r_test_res.csv"), index_col=0)
 
     if with_outliers:
         # Introduce outlier counts and a condition level with a single replicate
@@ -580,21 +528,15 @@ def test_continuous_lfc_shrinkage(tol=0.02):
 
     test_path = str(Path(os.path.realpath(tests.__file__)).parent.resolve())
 
-    r_res = pd.read_csv(
-        os.path.join(test_path, "data/continuous/r_test_res.csv"), index_col=0
-    )
+    r_res = pd.read_csv(os.path.join(test_path, "data/continuous/r_test_res.csv"), index_col=0)
     r_shrunk_res = pd.read_csv(
         os.path.join(test_path, "data/continuous/r_test_lfc_shrink_res.csv"),
         index_col=0,
     )
 
-    counts_df = pd.read_csv(
-        os.path.join(test_path, "data/continuous/test_counts.csv"), index_col=0
-    ).T
+    counts_df = pd.read_csv(os.path.join(test_path, "data/continuous/test_counts.csv"), index_col=0).T
 
-    metadata = pd.read_csv(
-        os.path.join(test_path, "data/continuous/test_metadata.csv"), index_col=0
-    )
+    metadata = pd.read_csv(os.path.join(test_path, "data/continuous/test_metadata.csv"), index_col=0)
 
     r_size_factors = pd.read_csv(
         os.path.join(test_path, "data/continuous/r_test_size_factors.csv"),
@@ -626,10 +568,7 @@ def test_continuous_lfc_shrinkage(tol=0.02):
     shrunk_res = res.results_df
 
     # Check that the same LFC found (up to tol)
-    assert (
-        abs(r_shrunk_res.log2FoldChange - shrunk_res.log2FoldChange)
-        / abs(r_shrunk_res.log2FoldChange)
-    ).max() < tol
+    assert (abs(r_shrunk_res.log2FoldChange - shrunk_res.log2FoldChange) / abs(r_shrunk_res.log2FoldChange)).max() < tol
 
 
 @pytest.mark.parametrize("low_memory", [True, False])
@@ -641,13 +580,9 @@ def test_wide_deseq(
 
     test_path = str(Path(os.path.realpath(tests.__file__)).parent.resolve())
 
-    counts_df = pd.read_csv(
-        os.path.join(test_path, "data/wide/test_counts.csv"), index_col=0
-    ).T
+    counts_df = pd.read_csv(os.path.join(test_path, "data/wide/test_counts.csv"), index_col=0).T
 
-    metadata = pd.read_csv(
-        os.path.join(test_path, "data/wide/test_metadata.csv"), index_col=0
-    )
+    metadata = pd.read_csv(os.path.join(test_path, "data/wide/test_metadata.csv"), index_col=0)
 
     # Load R results
     r_res = pd.read_csv(os.path.join(test_path, "data/wide/r_test_res.csv"), index_col=0)
@@ -718,9 +653,7 @@ def test_anndata_init(counts_df, metadata, tol=0.02):
     # Load R data
     test_path = str(Path(os.path.realpath(tests.__file__)).parent.resolve())
 
-    r_res = pd.read_csv(
-        os.path.join(test_path, "data/single_factor/r_test_res.csv"), index_col=0
-    )
+    r_res = pd.read_csv(os.path.join(test_path, "data/single_factor/r_test_res.csv"), index_col=0)
 
     # Initialize DeseqDataSet from anndata and test results
     dds = DeseqDataSet(adata=adata, design="~condition")
@@ -742,9 +675,7 @@ def test_design_matrix_init(counts_df, metadata, tol=0.02):
     # Load R data
     test_path = str(Path(os.path.realpath(tests.__file__)).parent.resolve())
 
-    r_res = pd.read_csv(
-        os.path.join(test_path, "data/single_factor/r_test_res.csv"), index_col=0
-    )
+    r_res = pd.read_csv(os.path.join(test_path, "data/single_factor/r_test_res.csv"), index_col=0)
 
     # Create a design matrix
     design_matrix = pd.DataFrame(model_matrix("~condition", metadata))
@@ -770,13 +701,9 @@ def test_vst(counts_df, metadata, tol=0.02):
     # Load R data
     test_path = str(Path(os.path.realpath(tests.__file__)).parent.resolve())
 
-    r_vst = pd.read_csv(
-        os.path.join(test_path, "data/single_factor/r_vst.csv"), index_col=0
-    ).T
+    r_vst = pd.read_csv(os.path.join(test_path, "data/single_factor/r_vst.csv"), index_col=0).T
 
-    r_vst_with_design = pd.read_csv(
-        os.path.join(test_path, "data/single_factor/r_vst_with_design.csv"), index_col=0
-    ).T
+    r_vst_with_design = pd.read_csv(os.path.join(test_path, "data/single_factor/r_vst_with_design.csv"), index_col=0).T
 
     # Test blind design
     dds = DeseqDataSet(counts=counts_df, metadata=metadata, design="~condition")
@@ -786,9 +713,7 @@ def test_vst(counts_df, metadata, tol=0.02):
     # Test full design
     dds = DeseqDataSet(counts=counts_df, metadata=metadata, design="~condition")
     dds.vst(use_design=True)
-    assert (
-        np.abs(r_vst_with_design - dds.layers["vst_counts"]) / r_vst_with_design
-    ).max().max() < tol
+    assert (np.abs(r_vst_with_design - dds.layers["vst_counts"]) / r_vst_with_design).max().max() < tol
 
 
 def test_mean_vst(counts_df, metadata, tol=0.02):
@@ -798,9 +723,7 @@ def test_mean_vst(counts_df, metadata, tol=0.02):
     # Load R data
     test_path = str(Path(os.path.realpath(tests.__file__)).parent.resolve())
 
-    r_vst = pd.read_csv(
-        os.path.join(test_path, "data/single_factor/r_mean_vst.csv"), index_col=0
-    ).T
+    r_vst = pd.read_csv(os.path.join(test_path, "data/single_factor/r_mean_vst.csv"), index_col=0).T
 
     # Test blind design
     dds = DeseqDataSet(counts=counts_df, metadata=metadata, design="~condition")
@@ -842,9 +765,7 @@ def train_metadata(metadata):
 
 @pytest.fixture
 def train_dds(train_counts, train_metadata):
-    return DeseqDataSet(
-        counts=train_counts, metadata=train_metadata, design="~condition"
-    )
+    return DeseqDataSet(counts=train_counts, metadata=train_metadata, design="~condition")
 
 
 def test_deseq2_norm_fit(train_counts):
@@ -860,9 +781,7 @@ def test_deseq2_norm_transform(train_counts, test_counts):
     # First fit with some indices
     logmeans, filtered_genes = deseq2_norm_fit(train_counts)
 
-    normed_counts, size_factors = deseq2_norm_transform(
-        test_counts, logmeans, filtered_genes
-    )
+    normed_counts, size_factors = deseq2_norm_transform(test_counts, logmeans, filtered_genes)
     assert isinstance(normed_counts, pd.DataFrame)
     # 25 samples, 10 genes
     assert normed_counts.shape == (25, 10)
@@ -954,8 +873,6 @@ def assert_res_almost_equal(py_res, r_res, tol=0.02):
     assert (py_res.padj.isna() == r_res.padj.isna()).all()
 
     # Check that the same LFC, p-values and adjusted p-values are found (up to tol)
-    assert (
-        abs(r_res.log2FoldChange - py_res.log2FoldChange) / abs(r_res.log2FoldChange)
-    ).max() < tol
+    assert (abs(r_res.log2FoldChange - py_res.log2FoldChange) / abs(r_res.log2FoldChange)).max() < tol
     assert (abs(r_res.pvalue - py_res.pvalue) / r_res.pvalue).max() < tol
     assert (abs(r_res.padj - py_res.padj) / r_res.padj).max() < tol

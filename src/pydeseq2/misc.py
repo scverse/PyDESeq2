@@ -10,7 +10,7 @@ import pandas as pd
 def test_valid_counts(counts: pd.DataFrame | np.ndarray) -> None:
     """Test that the count matrix contains valid inputs.
 
-    More precisely, test that inputs are non-negative integers or NaNs.
+    More precisely, test that the count matrix is not empty and that inputs are non-negative integers or NaNs.
     A warning is raised if the count matrix contains NaNs.
 
     Parameters
@@ -19,6 +19,8 @@ def test_valid_counts(counts: pd.DataFrame | np.ndarray) -> None:
         Raw counts.
         One column per gene, rows are indexed by sample barcodes.
     """
+    if counts.size == 0:
+        raise ValueError("The count matrix is empty.")
     if isinstance(counts, pd.DataFrame):
         if not np.issubdtype(counts.to_numpy().dtype, np.number):
             raise ValueError("The count matrix should only contain numbers.")

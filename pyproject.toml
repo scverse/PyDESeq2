@@ -15,6 +15,7 @@ authors = [
   { name = "Maria Telenczuk" },
   { name = "Vincent Cabelli" },
   { name = "Mathieu Andreux" },
+  { name = "Lukas Heumos" },
 ]
 requires-python = ">=3.12"
 classifiers = [
@@ -34,6 +35,7 @@ dependencies = [
   "pandas>=2.3",
   "scikit-learn>=1.6",
   "scipy>=1.15",
+  "scverse-misc>=0.1.8",
   "session-info2",
 ]
 # https://docs.pypi.org/project_metadata/#project-urls
@@ -50,6 +52,9 @@ test = [
   "coverage>=7.10",
   "pytest>=8.4",
   "pytest-cov",     # For VS Code's coverage functionality
+]
+deseq2 = [
+  "rpy2>=3.6",
 ]
 doc = [
   "docutils>=0.8,!=0.18.*,!=0.19.*",
@@ -90,16 +95,21 @@ envs.hatch-test.matrix = [
   { deps = [ "stable" ], python = [ "3.12", "3.14" ] },
   # Test the newest supported Python version also with pre-release deps
   { deps = [ "pre" ], python = [ "3.14" ] },
+  # Compare with DESeq2 through rpy2, which requires R and DESeq2 to be installed
+  { deps = [ "deseq2" ], python = [ "3.14" ] },
 ]
 # If the matrix variable `deps` is set to "pre",
 # set the environment variable `UV_PRERELEASE` to "allow".
 envs.hatch-test.overrides.matrix.deps.env-vars = [
   { value = "allow", key = "UV_PRERELEASE", if = [ "pre" ] },
 ]
+envs.hatch-test.overrides.matrix.deps.dependency-groups = [
+  { value = "deseq2", if = [ "deseq2" ] },
+]
 envs.hatch-test.dependency-groups = [ "dev", "test" ]
 
 [tool.ruff]
-line-length = 89
+line-length = 120
 src = [ "src" ]
 extend-include = [ "*.ipynb" ]
 format.docstring-code-format = true

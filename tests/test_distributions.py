@@ -14,15 +14,11 @@ def test_shrinkage_covariance_matches_objective_curvature(width, shrink_index):
     size = 4.0
     counts = rng.negative_binomial(size, size / (size + mean))
     prior_scale = 0.7
-    beta, covariance, converged = nbinomGLM(
-        design, counts, size, offset, 15.0, prior_scale, shrink_index=shrink_index
-    )
+    beta, covariance, converged = nbinomGLM(design, counts, size, offset, 15.0, prior_scale, shrink_index=shrink_index)
     assert converged
 
     def objective(value):
-        return nbinomFn(
-            value, design, counts, size, offset, 15.0, prior_scale, shrink_index
-        )
+        return nbinomFn(value, design, counts, size, offset, 15.0, prior_scale, shrink_index)
 
     step = 1e-3
     directions = np.eye(width) * step

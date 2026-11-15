@@ -8,9 +8,7 @@ from scipy.special import polygamma  # type: ignore
 from pydeseq2.grid_search import grid_fit_shrink_beta
 
 
-def nb_nll(
-    counts: np.ndarray, mu: np.ndarray, alpha: float | np.ndarray
-) -> float | np.ndarray:
+def nb_nll(counts: np.ndarray, mu: np.ndarray, alpha: float | np.ndarray) -> float | np.ndarray:
     r"""Neg log-likelihood of a negative binomial of parameters ``mu`` and ``alpha``.
 
     Mathematically, if ``counts`` is a vector of counting entries :math:`y_i` then the likelihood of each entry :math:`y_i` to be drawn from a negative binomial :math:`NB(\mu, \alpha)` is [1]
@@ -66,11 +64,7 @@ def nb_nll(
     else:
         return (
             n * alpha_neg1 * np.log(alpha)
-            + (
-                -logbinom
-                + (counts + alpha_neg1) * np.log(alpha_neg1 + mu)
-                - counts * np.log(mu)
-            ).sum()
+            + (-logbinom + (counts + alpha_neg1) * np.log(alpha_neg1 + mu) - counts * np.log(mu)).sum()
         )
 
 
@@ -150,13 +144,11 @@ def nbinomFn(
     no_shrink_mask = np.ones(num_vars) - shrink_mask
 
     xbeta = design_matrix @ beta
-    prior = (
-        (beta * no_shrink_mask) ** 2 / (2 * prior_no_shrink_scale**2)
-    ).sum() + np.log1p((beta[shrink_index] / prior_scale) ** 2)
+    prior = ((beta * no_shrink_mask) ** 2 / (2 * prior_no_shrink_scale**2)).sum() + np.log1p(
+        (beta[shrink_index] / prior_scale) ** 2
+    )
 
-    nll = (
-        counts * xbeta - (counts + size) * np.logaddexp(xbeta + offset, np.log(size))
-    ).sum(axis=0)
+    nll = (counts * xbeta - (counts + size) * np.logaddexp(xbeta + offset, np.log(size))).sum(axis=0)
 
     return prior - nll
 
@@ -244,14 +236,11 @@ def nbinomGLM(
     def df(beta: np.ndarray, cnst: float = scale_cnst) -> np.ndarray:
         # Gradient of the function to optimize
         xbeta = design_matrix @ beta
-        d_neg_prior = (
-            beta * no_shrink_mask / prior_no_shrink_scale** 2
-            + 2 * beta * shrink_mask / (prior_scale**2 + beta[shrink_index] ** 2)
+        d_neg_prior = beta * no_shrink_mask / prior_no_shrink_scale**2 + 2 * beta * shrink_mask / (
+            prior_scale**2 + beta[shrink_index] ** 2
         )
 
-        d_nll = (
-            counts - (counts + size) / (1 + size * np.exp(-xbeta - offset))
-        ) @ design_matrix
+        d_nll = (counts - (counts + size) / (1 + size * np.exp(-xbeta - offset))) @ design_matrix
 
         return (d_neg_prior - d_nll) / cnst
 
@@ -263,11 +252,7 @@ def nbinomGLM(
         frac = (counts + size) * size * exp_xbeta_off / (size + exp_xbeta_off) ** 2
         # Build diagonal
         h11 = 1 / prior_no_shrink_scale**2
-        h22 = (
-            2
-            * (prior_scale**2 - beta[shrink_index] ** 2)
-            / (prior_scale**2 + beta[shrink_index] ** 2) ** 2
-        )
+        h22 = 2 * (prior_scale**2 - beta[shrink_index] ** 2) / (prior_scale**2 + beta[shrink_index] ** 2) ** 2
 
         h = np.diag(no_shrink_mask * h11 + shrink_mask * h22)
 

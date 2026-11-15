@@ -71,9 +71,7 @@ def trimmed_cell_variance(counts: np.ndarray, cells: pd.Series) -> np.ndarray:
     for lvl in cells.unique():
         cell_means = cast(
             np.ndarray,
-            trimmed_mean(
-                counts[cells == lvl, :], trim=trimratio[trimfn(ns[lvl])], axis=0
-            ),
+            trimmed_mean(counts[cells == lvl, :], trim=trimratio[trimfn(ns[lvl])], axis=0),
         )
         sqerror[cells == lvl, :] = counts[cells == lvl, :] - cell_means[None, :]
 
@@ -82,16 +80,12 @@ def trimmed_cell_variance(counts: np.ndarray, cells: pd.Series) -> np.ndarray:
     varEst = np.zeros((len(ns), counts.shape[1]), dtype=float)
     for i, lvl in enumerate(cells.unique()):
         scale = [2.04, 1.86, 1.51][trimfn(ns[lvl])]
-        varEst[i, :] = scale * trimmed_mean(
-            sqerror[cells == lvl, :], trim=trimratio[trimfn(ns[lvl])], axis=0
-        )
+        varEst[i, :] = scale * trimmed_mean(sqerror[cells == lvl, :], trim=trimratio[trimfn(ns[lvl])], axis=0)
 
     return varEst.max(axis=0)
 
 
-def trimmed_variance(
-    x: np.ndarray, trim: float = 0.125, axis: int = 0
-) -> float | np.ndarray:
+def trimmed_variance(x: np.ndarray, trim: float = 0.125, axis: int = 0) -> float | np.ndarray:
     """Return trimmed variance.
 
     Compute the variance after trimming data of its smallest and largest quantiles.
@@ -166,9 +160,7 @@ def fit_alpha_mle(
 
     if prior_reg:
         # Note: assertion is not working when using numpy
-        assert prior_disp_var is not None, (
-            "Sigma_prior is required for prior regularization"
-        )
+        assert prior_disp_var is not None, "Sigma_prior is required for prior regularization"
 
     log_alpha_hat = np.log(alpha_hat)
 
@@ -195,8 +187,7 @@ def fit_alpha_mle(
             reg_grad += (
                 0.5
                 * (
-                    np.linalg.inv((design_matrix.T * W) @ design_matrix)
-                    * ((design_matrix.T * dW) @ design_matrix)
+                    np.linalg.inv((design_matrix.T * W) @ design_matrix) * ((design_matrix.T * dW) @ design_matrix)
                 ).sum()
             ) * alpha  # since we want the gradient wrt log_alpha,
             # we need to multiply by alpha
@@ -214,9 +205,7 @@ def fit_alpha_mle(
         x0=np.asarray([np.log(alpha_hat)]),
         jac=lambda x: np.asarray([dloss(x[0])]),
         method=optimizer,
-        bounds=(
-            [(np.log(min_disp), np.log(max_disp))] if optimizer == "L-BFGS-B" else None
-        ),
+        bounds=([(np.log(min_disp), np.log(max_disp))] if optimizer == "L-BFGS-B" else None),
     )
 
     if res.success:
@@ -240,9 +229,7 @@ def fit_alpha_mle(
         )
 
 
-def fit_rough_dispersions(
-    normed_counts: np.ndarray, design_matrix: pd.DataFrame
-) -> np.ndarray:
+def fit_rough_dispersions(normed_counts: np.ndarray, design_matrix: pd.DataFrame) -> np.ndarray:
     """Rough dispersion estimates from linear model, as per the R code.
 
     Used as initial estimates in :meth:`DeseqDataSet.fit_genewise_dispersions() <pydeseq2.dds.DeseqDataSet.fit_genewise_dispersions>`.
@@ -275,15 +262,11 @@ def fit_rough_dispersions(
     reg.fit(design_matrix, normed_counts)
     y_hat = reg.predict(design_matrix)
     y_hat = np.maximum(y_hat, 1)
-    alpha_rde = (
-        ((normed_counts - y_hat) ** 2 - y_hat) / ((num_samples - num_vars) * y_hat**2)
-    ).sum(axis=0)
+    alpha_rde = (((normed_counts - y_hat) ** 2 - y_hat) / ((num_samples - num_vars) * y_hat**2)).sum(axis=0)
     return np.maximum(alpha_rde, 0)
 
 
-def fit_moments_dispersions(
-    normed_counts: np.ndarray, size_factors: np.ndarray
-) -> np.ndarray:
+def fit_moments_dispersions(normed_counts: np.ndarray, size_factors: np.ndarray) -> np.ndarray:
     """Dispersion estimates based on moments, as per the R code.
 
     Used as initial estimates in :meth:`DeseqDataSet.fit_genewise_dispersions() <pydeseq2.dds.DeseqDataSet.fit_genewise_dispersions>`.
@@ -311,9 +294,7 @@ def fit_moments_dispersions(
     return np.nan_to_num((sigma - s_mean_inv * mu) / mu**2)
 
 
-def robust_method_of_moments_disp(
-    normed_counts: np.ndarray, design_matrix: pd.DataFrame
-) -> np.ndarray:
+def robust_method_of_moments_disp(normed_counts: np.ndarray, design_matrix: pd.DataFrame) -> np.ndarray:
     """Perform dispersion estimation using a method of trimmed moments.
 
     Used for outlier detection based on Cook's distance.
