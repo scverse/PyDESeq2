@@ -104,7 +104,7 @@ def trimmed_variance(x: np.ndarray, trim: float = 0.125, axis: int = 0) -> float
     Trimmed variances.
     """
     rm = trimmed_mean(x, trim=trim, axis=axis)
-    sqerror = (x - rm) ** 2
+    sqerror = (x - np.expand_dims(rm, axis)) ** 2
     # scale due to trimming of large squares
     return 1.51 * trimmed_mean(sqerror, trim=trim, axis=axis)
 
