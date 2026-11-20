@@ -66,6 +66,30 @@ res = ds.results_df
 res[res.padj < 0.05].sort_values("padj").head(10)
 
 # %%
+# The knocked-down gene itself, *pasilla* (``FBgn0261552``), serves as a positive control: its expression drops about 3.6-fold in treated samples.
+
+res.loc["FBgn0261552"]
+
+# %%
+# Accounting for the library type
+# -------------------------------
+#
+# Without ``type`` in the design, the difference between single-end and paired-end libraries is left in the residual variance.
+# The dispersions are then overestimated, and fewer genes are found to be differentially expressed.
+
+dds_condition = DeseqDataSet(counts=counts_df, metadata=metadata, design="~condition", quiet=True)
+dds_condition.deseq2()
+ds_condition = DeseqStats(dds_condition, contrast=["condition", "treated", "untreated"], quiet=True)
+ds_condition.summary()
+pd.Series(
+    {
+        "~condition": (ds_condition.results_df.padj < 0.05).sum(),
+        "~type + condition": (res.padj < 0.05).sum(),
+    },
+    name="genes at padj < 0.05",
+)
+
+# %%
 # LFC shrinkage
 # -------------
 #
