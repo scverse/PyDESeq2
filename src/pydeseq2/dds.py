@@ -1000,6 +1000,9 @@ class DeseqDataSet(ad.AnnData):
         # max cooks.
         use_for_max = n_or_more_replicates(self.obsm["design_matrix"], 3)
 
+        # If for a gene there are 3 samples or more that have more counts than the
+        # maximum cooks sample, don't count this gene as an outlier.
+
         # Take into account whether we already replaced outliers
         if self.refit_cooks and (self.var["refitted"].sum() > 0) and "replace_cooks" in self.layers.keys():
             cooks_outlier = (self.layers["replace_cooks"][use_for_max, :] > cooks_cutoff).any(axis=0)
@@ -1007,7 +1010,6 @@ class DeseqDataSet(ad.AnnData):
         else:
             cooks_outlier = (self.layers["cooks"][use_for_max, :] > cooks_cutoff).any(axis=0)
 
-        # DESeq2 only keeps genes with 3 or more samples above the outlier for a single two-level factor.
         design_matrix = self.obsm["design_matrix"]
         if design_matrix.shape[1] == 2 and len(design_matrix.value_counts()) == 2:
             pos = self.layers["cooks"][:, cooks_outlier].argmax(0)

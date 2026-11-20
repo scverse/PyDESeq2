@@ -102,11 +102,11 @@ def irls_solver(
             # If IRLS starts diverging, use L-BFGS-B
             def f(beta: np.ndarray) -> float:
                 # closure to minimize
-                mu_ = size_factors * np.exp(np.clip(X @ beta, -700, 700))
+                mu_ = size_factors * np.exp(X @ beta)
                 return nb_nll(counts, mu_, disp) + 0.5 * (ridge_factor @ beta**2).sum()
 
             def df(beta: np.ndarray) -> np.ndarray:
-                mu_ = size_factors * np.exp(np.clip(X @ beta, -700, 700))
+                mu_ = size_factors * np.exp(X @ beta)
                 return -X.T @ counts + ((1 / disp + counts) * mu_ / (1 / disp + mu_)) @ X + ridge_factor @ beta
 
             res = minimize(

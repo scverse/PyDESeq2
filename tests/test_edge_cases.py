@@ -7,6 +7,7 @@ from matplotlib import pyplot as plt
 from pydeseq2.datasets import load_example_data
 from pydeseq2.dds import DeseqDataSet
 from pydeseq2.ds import DeseqStats
+from pydeseq2.glm import irls_solver
 
 
 def test_zero_genes():
@@ -618,3 +619,23 @@ def test_plot_ax():
 
     assert plt.get_fignums() == fignums
     assert all(ax.collections for ax in axes)
+
+
+def test_irls_fallback_bounds():
+    """Test that the optimizer fallback of the IRLS bounds coefficients on the log2 scale."""
+    design_matrix = np.column_stack([np.ones(20), np.repeat([0, 1], 10)])
+    counts = np.repeat([0.0, 50.0], 10)
+
+    beta, _, _, _ = irls_solver(counts, np.ones(20), design_matrix, disp=0.1, min_beta=-5, max_beta=5, maxiter=1)
+
+    assert beta[1] / np.log(2) == pytest.approx(5)
+
+
+def test_irls_fallback_zero_counts():
+    """Test that the optimizer fallback of the IRLS fits the means of a group of zero counts below min_mu."""
+    design_matrix = np.column_stack([np.ones(20), np.repeat([0, 1], 10)])
+    counts = np.repeat([0.0, 50.0], 10)
+
+    _, mu, _, _ = irls_solver(counts, np.ones(20), design_matrix, disp=0.1, maxiter=1)
+
+    assert (mu[:10] < 1e-3).all()
