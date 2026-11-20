@@ -19,7 +19,7 @@ def trimmed_mean(x: np.ndarray, trim: float = 0.1, **kwargs) -> float | np.ndarr
     x
         Data whose mean to compute.
     trim
-        Fraction of data to trim at each end. (default: ``0.1``).
+        Fraction of data to trim at each end.
     **kwargs
         Keyword arguments, useful to pass axis.
 
@@ -78,9 +78,9 @@ def lowess(features: np.ndarray, targets: np.ndarray, frac: float = 2.0 / 3.0, i
     targets
         A 1D array of target values (with the same shape as features).
     frac
-        The fraction of the data used when estimating each y-value. (default: ``2/3``).
+        The fraction of the data used when estimating each y-value.
     iter
-        The number of robustifying iterations. (default: ``3``).
+        The number of robustifying iterations.
 
     Returns
     -------
@@ -135,9 +135,9 @@ def fit_local_regression(
     weights
         A 1D array of prior weights (with the same shape as features).
     frac
-        The fraction of the data used when fitting at each vertex. (default: ``0.7``).
+        The fraction of the data used when fitting at each vertex.
     cut
-        The largest distance between neighbouring vertices, relative to their smallest bandwidth. (default: ``0.8``).
+        The largest distance between neighbouring vertices, relative to their smallest bandwidth.
 
     Returns
     -------

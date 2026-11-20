@@ -66,48 +66,49 @@ class DeseqDataSet(ad.AnnData):
     design_factors
         Depecated.
         An optional list of factors to include in the design matrix.
-        Will be removed in a future release. (default: ``None``).
+        Will be removed in a future release.
     continuous_factors
         Deprecated.
-        Continuous factors are now automatically detected from the design, or cast to categorical using the C() operator in the formula. (default: ``None``).
+        Continuous factors are now automatically detected from the design, or cast to categorical using the C() operator in the formula.
     ref_level
         Deprecated.
     fit_type
         Either ``"parametric"``, ``"mean"`` or ``"local"`` for the type of fitting of dispersions to the mean intensity. ``"parametric"``: fit a dispersion-mean relation via a robust gamma-family GLM. ``"mean"``: use the mean of gene-wise dispersion estimates. ``"local"``: fit a local regression of log dispersions over log means.
         Will set the fit type for the DEA and the vst transformation.
-        If needed, it can be set separately for each method.(default: ``"parametric"``).
+        If needed, it can be set separately for each method.
     size_factors_fit_type
-        The normalization method to use: ``"ratio"``, ``"poscounts"`` or ``"iterative"``. ``"ratio"``: fit size factors using the median-of-ratios method. ``"poscounts"``: fit size factors using the method implemented in DESeq2 for the case where there may be few or no genes which have no zero values. ``"iterative"``: fit size factors iteratively. (default: ``"ratio"``).
+        The normalization method to use: ``"ratio"``, ``"poscounts"`` or ``"iterative"``. ``"ratio"``: fit size factors using the median-of-ratios method. ``"poscounts"``: fit size factors using the method implemented in DESeq2 for the case where there may be few or no genes which have no zero values. ``"iterative"``: fit size factors iteratively.
     control_genes
         Genes to use as control genes for size factor fitting.
         If provided, size factors will be fit using only these genes.
         This is useful when certain genes are known to be invariant across conditions (e.g., housekeeping genes).
-        Any valid AnnData indexer (bool array, integer positions, or gene name strings) can be used. (default: ``None``).
+        Any valid AnnData indexer (bool array, integer positions, or gene name strings) can be used.
     min_mu
-        Threshold for mean estimates. (default: ``0.5``).
+        Threshold for mean estimates.
     min_disp
-        Lower threshold for dispersion parameters. (default: ``1e-8``).
+        Lower threshold for dispersion parameters.
     max_disp
         Upper threshold for dispersion parameters.
-        Note: The threshold that is actually enforced is max(max_disp, len(counts)). (default: ``10``).
+        Note: The threshold that is actually enforced is max(max_disp, len(counts)).
     refit_cooks
-        Whether to refit cooks outliers. (default: ``True``).
+        Whether to refit cooks outliers.
     min_replicates
-        Minimum number of replicates a condition should have to allow refitting its samples. (default: ``7``).
+        Minimum number of replicates a condition should have to allow refitting its samples.
     beta_tol
-        Stopping criterion for IRWLS. (default: ``1e-8``).
+        Stopping criterion for IRWLS.
 
         .. math:: \vert dev_t - dev_{t+1}\vert / (\vert dev \vert + 0.1) < \beta_{tol}.
     n_cpus
         Number of cpus to use.
         If ``None`` and if ``inference`` is not provided, all available cpus will be used by the ``DefaultInference``.
-        If both are specified (i.e., ``n_cpus`` and ``inference`` are not ``None``), it will try to override the ``n_cpus`` attribute of the ``inference`` object. (default: ``None``).
+        If both are specified (i.e., ``n_cpus`` and ``inference`` are not ``None``), it will try to override the ``n_cpus`` attribute of the ``inference`` object.
     inference
-        Implementation of inference routines object instance. (default: :class:`DefaultInference <pydeseq2.default_inference.DefaultInference>`).
+        Implementation of inference routines object instance.
+        If None, a :class:`DefaultInference <pydeseq2.default_inference.DefaultInference>` is used.
     quiet
         Suppress deseq2 status updates during fit, which are otherwise logged at the info level.
     low_memory
-        Remove intermediate data structures from .layers and from .obsm that are no longer necessary after they are used during deseq2 run, such as Cook's distances. (default: False)
+        Remove intermediate data structures from .layers and from .obsm that are no longer necessary after they are used during deseq2 run, such as Cook's distances.
 
     Attributes
     ----------
@@ -316,7 +317,7 @@ class DeseqDataSet(ad.AnnData):
         ----------
         use_design
             Whether to use the full design matrix to fit dispersions and the trend curve.
-            If False, only an intercept is used. (default: ``False``).
+            If False, only an intercept is used.
         fit_type
             * ``None``: fit_type provided at initialization to fit
               the dispersions trend curve.
@@ -324,8 +325,6 @@ class DeseqDataSet(ad.AnnData):
               gamma-family GLM.
             * ``"mean"``: use the mean of gene-wise dispersion estimates.
             * ``"local"``: fit a local regression of log dispersions over log means.
-
-            (default: ``None``).
         """
         if fit_type is not None:
             self.vst_fit_type = fit_type
@@ -353,7 +352,7 @@ class DeseqDataSet(ad.AnnData):
         use_design
             Whether to use the full design matrix to fit dispersions and the trend curve.
             If False, only an intercept is used.
-            Only useful if ``fit_type`` is ``"parametric"`` or ``"local"``. (default: ``False``).
+            Only useful if ``fit_type`` is ``"parametric"`` or ``"local"``.
         """
         # Start by fitting median-of-ratio size factors if not already present,
         # or if they were computed iteratively
@@ -400,7 +399,7 @@ class DeseqDataSet(ad.AnnData):
         ----------
         counts
             Counts to transform.
-            If ``None``, use the counts from the current dataset. (default: ``None``).
+            If ``None``, use the counts from the current dataset.
 
         Returns
         -------
@@ -469,7 +468,7 @@ class DeseqDataSet(ad.AnnData):
         fit_type
             Either None, ``"parametric"``, ``"mean"`` or ``"local"`` for the type of fitting of dispersions to the mean intensity.``"parametric"``: fit a dispersion-mean relation via a robust gamma-family GLM. ``"mean"``: use the mean of gene-wise dispersion estimates. ``"local"``: fit a local regression of log dispersions over log means.
 
-            If None, the fit_type provided at class initialization is used. (default: ``None``).
+            If None, the fit_type provided at class initialization is used.
         """
         if fit_type is not None:
             self.fit_type = fit_type
@@ -555,11 +554,11 @@ class DeseqDataSet(ad.AnnData):
         Parameters
         ----------
         fit_type
-            The normalization method to use: "ratio", "poscounts" or "iterative". (default: ``"ratio"``).
+            The normalization method to use: "ratio", "poscounts" or "iterative".
         control_genes
             Genes to use as control genes for size factor fitting.
             If None, all genes are used.
-            Note that manually passing control genes here will override the `DeseqDataSet` `control_genes` attribute. (default: ``None``).
+            Note that manually passing control genes here will override the `DeseqDataSet` `control_genes` attribute.
         """
         if fit_type is None:
             fit_type = self.size_factors_fit_type
@@ -657,7 +656,7 @@ class DeseqDataSet(ad.AnnData):
         Parameters
         ----------
         vst
-            Whether the dispersion estimates are being fitted as part of the VST pipeline. (default: ``False``).
+            Whether the dispersion estimates are being fitted as part of the VST pipeline.
         """
         # Check that size factors are available. If not, compute them.
         if "size_factors" not in self.obs:
@@ -736,7 +735,7 @@ class DeseqDataSet(ad.AnnData):
         Parameters
         ----------
         vst
-            Whether the dispersion trend curve is being fitted as part of the VST pipeline. (default: ``False``).
+            Whether the dispersion trend curve is being fitted as part of the VST pipeline.
         """
         disp_param_name = "vst_genewise_dispersions" if vst else "genewise_dispersions"
         fit_type = self.vst_fit_type if vst else self.fit_type
@@ -1081,13 +1080,13 @@ class DeseqDataSet(ad.AnnData):
         Parameters
         ----------
         log
-            Whether to log scale x and y axes (``default=True``).
+            Whether to log scale x and y axes.
         save_path
             The path where to save the plot.
-            If left None, the plot won't be saved (``default=None``).
+            If left None, the plot won't be saved.
         ax
             The axes to plot on.
-            If left None, a new figure is created and shown (``default=None``).
+            If left None, a new figure is created and shown.
         **kwargs
             Keyword arguments for the scatter plot.
         """
@@ -1115,7 +1114,7 @@ class DeseqDataSet(ad.AnnData):
         Parameters
         ----------
         vst
-            Whether the dispersion trend curve is being fitted as part of the VST pipeline. (default: ``False``).
+            Whether the dispersion trend curve is being fitted as part of the VST pipeline.
         """
         disp_param_name = "vst_genewise_dispersions" if vst else "genewise_dispersions"
 
@@ -1177,7 +1176,7 @@ class DeseqDataSet(ad.AnnData):
         Parameters
         ----------
         vst
-            Whether the dispersion trend curve is being fitted as part of the VST pipeline. (default: ``False``).
+            Whether the dispersion trend curve is being fitted as part of the VST pipeline.
         """
         disp_param_name = "vst_genewise_dispersions" if vst else "genewise_dispersions"
 
@@ -1198,7 +1197,7 @@ class DeseqDataSet(ad.AnnData):
         Parameters
         ----------
         vst
-            Whether the dispersion trend curve is being fitted as part of the VST pipeline. (default: ``False``).
+            Whether the dispersion trend curve is being fitted as part of the VST pipeline.
         """
         disp_param_name = "vst_genewise_dispersions" if vst else "genewise_dispersions"
 
@@ -1404,9 +1403,9 @@ class DeseqDataSet(ad.AnnData):
         Parameters
         ----------
         niter
-            Maximum number of iterations to perform (default: ``10``).
+            Maximum number of iterations to perform.
         quant
-            Quantile value at which negative likelihood is cut in the optimization (default: ``0.95``).
+            Quantile value at which negative likelihood is cut in the optimization.
 
         """
         # Initialize size factors and normed counts fields

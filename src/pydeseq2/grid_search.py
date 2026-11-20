@@ -71,11 +71,11 @@ def grid_fit_alpha(
     prior_disp_var
         Prior dispersion variance.
     cr_reg
-        Whether to use Cox-Reid regularization. (default: ``True``).
+        Whether to use Cox-Reid regularization.
     prior_reg
-        Whether to use prior log-residual regularization. (default: ``False``).
+        Whether to use prior log-residual regularization.
     grid_length
-        Number of grid points. (default: ``100``).
+        Number of grid points.
 
     Returns
     -------
@@ -139,11 +139,11 @@ def grid_fit_beta(
     min_mu
         Lower threshold for dispersion parameters.
     grid_length
-        Number of grid points. (default: ``100``).
+        Number of grid points.
     min_beta
-        Lower-bound on LFC. (default: ``30``).
+        Lower-bound on LFC.
     max_beta
-        Upper-bound on LFC. (default: ``30``).
+        Upper-bound on LFC.
 
     Returns
     -------
@@ -214,13 +214,13 @@ def grid_fit_shrink_beta(
     scale_cnst
         Scaling factor for the optimization.
     grid_length
-        Number of grid points. (default: ``100``).
+        Number of grid points.
     min_beta
-        Lower-bound on LFC. (default: ``30``).
+        Lower-bound on LFC.
     max_beta
-        Upper-bound on LFC. (default: ``30``).
+        Upper-bound on LFC.
     shrink_index
-        Index of the LFC coordinate to shrink. (default: ``1``).
+        Index of the LFC coordinate to shrink.
 
     Returns
     -------

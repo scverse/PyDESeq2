@@ -28,12 +28,12 @@ class DefaultInference(inference.Inference):
     ----------
     joblib_verbosity
         The verbosity level for joblib tasks.
-        The higher the value, the more updates are reported. (default: ``0``).
+        The higher the value, the more updates are reported.
     batch_size
-        Number of tasks to allocate to each joblib parallel worker. (default: ``128``).
+        Number of tasks to allocate to each joblib parallel worker.
     n_cpus
         Number of cpus to use.
-        If None, all available cpus will be used. (default: ``None``).
+        If None, all available cpus will be used.
     backend
         Joblib backend.
     """

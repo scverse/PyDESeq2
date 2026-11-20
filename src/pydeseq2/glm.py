@@ -40,20 +40,20 @@ def irls_solver(
     disp
         Gene-wise dispersion prior.
     min_mu
-        Lower bound on estimated means, to ensure numerical stability. (default: ``0.5``).
+        Lower bound on estimated means, to ensure numerical stability.
     beta_tol
-        Stopping criterion for IRWLS: :math:`\vert dev - dev_{old}\vert / \vert dev + 0.1 \vert < \beta_{tol}`. (default: ``1e-8``).
+        Stopping criterion for IRWLS: :math:`\vert dev - dev_{old}\vert / \vert dev + 0.1 \vert < \beta_{tol}`.
     min_beta
-        Lower bound on the log2 fold changes found by the optimizer. (default: ``-30``).
+        Lower bound on the log2 fold changes found by the optimizer.
     max_beta
         Upper bound on the log2 fold changes found by the optimizer.
-        IRLS switches to the optimizer once a natural log coefficient exceeds it in absolute value. (default: ``30``).
+        IRLS switches to the optimizer once a natural log coefficient exceeds it in absolute value.
     optimizer
         Optimizing method to use in case IRLS starts diverging.
         Accepted values: 'BFGS' or 'L-BFGS-B'.
-        NB: only 'L-BFGS-B' ensures that LFCS will lay in the [min_beta, max_beta] range. (default: ``'L-BFGS-B'``).
+        NB: only 'L-BFGS-B' ensures that LFCS will lay in the [min_beta, max_beta] range.
     maxiter
-        Maximum number of IRLS iterations to perform before switching to L-BFGS-B. (default: ``250``).
+        Maximum number of IRLS iterations to perform before switching to L-BFGS-B.
 
     Returns
     -------
@@ -174,7 +174,7 @@ def fit_lin_mu(
     design_matrix
         Design matrix.
     min_mu
-        Lower threshold for fitted means, for numerical stability. (default: ``0.5``).
+        Lower threshold for fitted means, for numerical stability.
 
     Returns
     -------

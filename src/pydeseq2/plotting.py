@@ -31,13 +31,13 @@ def make_scatter(
     x_val
         1D array to plot (example: ``dds.varm['_normed_means']``).
     log
-        Whether or not to log scale features and targets axes (``default=True``).
+        Whether or not to log scale features and targets axes.
     save_path
         The path where to save the plot.
-        If left None, the plot won't be saved (``default=None``).
+        If left None, the plot won't be saved.
     ax
         The axes to plot on.
-        If left None, a new figure is created and shown (``default=None``).
+        If left None, a new figure is created and shown.
     **kwargs
         Matplotlib keyword arguments for the scatter plot.
     """
@@ -102,17 +102,17 @@ def make_MA_plot(
     padj_thresh
         P-value threshold to subset scatterplot colors on.
     log
-        Whether or not to log scale features and targets axes (``default=True``).
+        Whether or not to log scale features and targets axes.
     save_path
         The path where to save the plot.
-        If left None, the plot won't be saved (``default=None``).
+        If left None, the plot won't be saved.
     lfc_null
-        The (log2) log fold change under the null hypothesis. (default: ``0``).
+        The (log2) log fold change under the null hypothesis.
     alt_hypothesis
-        The alternative hypothesis for computing wald p-values. (default: ``None``).
+        The alternative hypothesis for computing wald p-values.
     ax
         The axes to plot on.
-        If left None, a new figure is created (``default=None``).
+        If left None, a new figure is created.
     **kwargs
         Matplotlib keyword arguments for the scatter plot.
     """
