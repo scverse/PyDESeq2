@@ -308,8 +308,7 @@ class DeseqStats:
             self.statistics.loc[self.dds.new_all_zeroes_genes] = 0.0
             self.p_values.loc[self.dds.new_all_zeroes_genes] = 1.0
 
-    # TODO update this to reflect the new contrast format
-    def lfc_shrink(self, coeff: str, adapt: bool = True) -> None:
+    def lfc_shrink(self, coeff: str | None = None, adapt: bool = True) -> None:
         """LFC shrinkage with an apeGLM prior :cite:p:`DeseqStats-zhu2019heavy`.
 
         Shrinks LFCs using a heavy-tailed Cauchy prior, leaving p-values unchanged.
@@ -319,10 +318,16 @@ class DeseqStats:
         coeff
             The LFC coefficient to shrink.
             Must be one of the columns of the LFC matrix.
+            If None, the coefficient tested by ``contrast`` is shrunk, which requires ``contrast`` to involve a single coefficient.
         adapt
             Whether to use the MLE estimates of LFC to adapt the prior.
             If False, the prior scale is set to 1.
         """
+        if coeff is None:
+            tested = np.flatnonzero(self.contrast_vector)
+            if len(tested) != 1:
+                raise ValueError("The contrast involves several LFC coefficients, please provide coeff.")
+            coeff = self.LFC.columns[tested[0]]
         if coeff not in self.LFC.columns:
             raise KeyError(
                 f"The coeff argument '{coeff}' should be one the LFC columns. "

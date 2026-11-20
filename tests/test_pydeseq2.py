@@ -275,6 +275,33 @@ def test_cooks_outlier_with_higher_counts(counts_df, metadata, design, is_outlie
     assert dds.cooks_outlier().iloc[0] == is_outlier
 
 
+@pytest.mark.parametrize("contrast", [["condition", "B", "A"], ["condition", "A", "B"]])
+def test_lfc_shrink_default_coeff(counts_df, metadata, contrast):
+    """Test that lfc_shrink shrinks the coefficient tested by the contrast when coeff is not given."""
+    dds = DeseqDataSet(counts=counts_df, metadata=metadata, design="~group + condition", quiet=True)
+    dds.deseq2()
+
+    res = []
+    for coeff in (None, "condition[T.B]"):
+        ds = DeseqStats(dds, contrast=contrast, quiet=True)
+        ds.summary()
+        ds.lfc_shrink(coeff=coeff)
+        res.append(ds.results_df)
+
+    pd.testing.assert_frame_equal(*res)
+
+
+def test_lfc_shrink_default_coeff_several_coefficients(counts_df, metadata):
+    """Test that lfc_shrink without coeff raises a ValueError for a contrast involving several coefficients."""
+    dds = DeseqDataSet(counts=counts_df, metadata=metadata, design="~group + condition", quiet=True)
+    dds.deseq2()
+    ds = DeseqStats(dds, contrast=np.array([0, 1, 1]), quiet=True)
+    ds.summary()
+
+    with pytest.raises(ValueError, match="several LFC coefficients"):
+        ds.lfc_shrink()
+
+
 def test_lfc_shrinkage(counts_df, metadata, tol=0.02):
     """Test that the outputs of the lfc_shrink function match those of the original R package (starting from the same inputs), up to a tolerance in relative error."""
 

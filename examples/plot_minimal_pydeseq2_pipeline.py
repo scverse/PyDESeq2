@@ -404,5 +404,6 @@ ds_Y_vs_X.summary()
 # In a multifactor setting, LFC shrinkage works as in the single-factor case, but will
 # only shrink the LFCs of a :class:`DeseqStats` object based on its
 # ``contrast`` argument.
+# Without ``coeff``, :meth:`lfc_shrink() <DeseqStats.lfc_shrink>` shrinks the coefficient that ``contrast`` tests, here ``condition[T.B]``.
 
-ds_B_vs_A.lfc_shrink(coeff="condition[T.B]")
+ds_B_vs_A.lfc_shrink()
