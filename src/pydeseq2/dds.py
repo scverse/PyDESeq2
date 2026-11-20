@@ -698,6 +698,7 @@ class DeseqDataSet(ad.AnnData):
                 min_mu=self.min_mu,
                 beta_tol=self.beta_tol,
             )
+            mu_hat_ = np.maximum(mu_hat_, self.min_mu)
 
         mu_param_name = "_vst_mu_hat" if vst else "_mu_hat"
         disp_param_name = "vst_genewise_dispersions" if vst else "genewise_dispersions"
@@ -1009,11 +1010,12 @@ class DeseqDataSet(ad.AnnData):
         else:
             cooks_outlier = (self.layers["cooks"][use_for_max, :] > cooks_cutoff).any(axis=0)
 
-        pos = self.layers["cooks"][:, cooks_outlier].argmax(0)
-
-        cooks_outlier[cooks_outlier] = (
-            self.X[:, cooks_outlier] > self.X[:, cooks_outlier][pos, np.arange(len(pos))]
-        ).sum(axis=0) < 3
+        design_matrix = self.obsm["design_matrix"]
+        if design_matrix.shape[1] == 2 and len(design_matrix.value_counts()) == 2:
+            pos = self.layers["cooks"][:, cooks_outlier].argmax(0)
+            cooks_outlier[cooks_outlier] = (
+                self.X[:, cooks_outlier] > self.X[:, cooks_outlier][pos, np.arange(len(pos))]
+            ).sum(axis=0) < 3
 
         if self.low_memory:
             del self.layers["cooks"]

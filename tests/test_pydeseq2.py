@@ -261,6 +261,20 @@ def test_deseq_no_refit_cooks(counts_df, metadata, tol=0.02):
     assert_res_almost_equal(ds.results_df, r_res, tol)
 
 
+@pytest.mark.parametrize(("design", "is_outlier"), [("~condition", False), ("~group + condition", True)])
+def test_cooks_outlier_with_higher_counts(counts_df, metadata, design, is_outlier):
+    """Test that a gene with 3 or more samples above its Cook's outlier is kept only for a single two-level factor, as in DESeq2."""
+    dds = DeseqDataSet(counts=counts_df, metadata=metadata, design=design, refit_cooks=False, quiet=True)
+    dds.deseq2()
+
+    sample = np.argsort(dds.X[:, 0])[dds.n_obs // 2]
+    dds.layers["cooks"][:, 0] = 0
+    dds.layers["cooks"][sample, 0] = 1e3
+    del dds.var["_pvalue_cooks_outlier"]
+
+    assert dds.cooks_outlier().iloc[0] == is_outlier
+
+
 def test_lfc_shrinkage(counts_df, metadata, tol=0.02):
     """Test that the outputs of the lfc_shrink function match those of the original R package (starting from the same inputs), up to a tolerance in relative error."""
 

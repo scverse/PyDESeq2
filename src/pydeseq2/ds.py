@@ -267,7 +267,9 @@ class DeseqStats:
                     "separated from the use of the LFC prior."
                 )
 
-        mu = np.exp(self.design_matrix @ self.LFC.T).multiply(self.dds.obs["size_factors"], 0).values
+        mu = np.maximum(
+            np.exp(self.design_matrix @ self.LFC.T).multiply(self.dds.obs["size_factors"], 0).values, self.dds.min_mu
+        )
 
         # Set regularization factors.
         if self.prior_LFC_var is not None:
