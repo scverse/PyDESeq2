@@ -70,9 +70,10 @@ class Inference(ABC):
         beta_tol
             Stopping criterion for IRWLS: :math:`\vert dev - dev_{old}\vert / \vert dev + 0.1 \vert < \beta_{tol}`. (default: ``1e-8``).
         min_beta
-            Lower-bound on LFC. (default: ``-30``).
+            Lower bound on the log2 fold changes found by the optimizer. (default: ``-30``).
         max_beta
-            Upper-bound on LFC. (default: ``-30``).
+            Upper bound on the log2 fold changes found by the optimizer.
+            IRLS switches to the optimizer once a natural log coefficient exceeds it in absolute value. (default: ``30``).
         optimizer
             Optimizing method to use in case IRLS starts diverging.
             Accepted values: 'BFGS' or 'L-BFGS-B'.

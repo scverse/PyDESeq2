@@ -98,6 +98,20 @@ def test_design(dataset, design, contrast):
     assert_res_almost_equal(res, r_res, tol=0.04 if dataset == "continuous" else 0.02)
 
 
+def test_single_sample_level():
+    """Test that PyDESeq2 matches DESeq2 when a level with a single sample makes the IRLS diverge."""
+    counts_df, metadata = load_data("synthetic")
+    metadata = metadata.assign(batch=["b2"] + ["b1"] * (len(metadata) - 1))
+    counts_df = counts_df.copy()
+    counts_df.iloc[0, :5] = 0
+    design, contrast = "~batch + group + condition", ["condition", "B", "A"]
+
+    res = run_pydeseq2(counts_df, metadata, design, contrast, {}, {})
+    r_res = run_r_deseq2(counts_df, metadata, design, contrast, {}, {})
+
+    assert_res_almost_equal(res, r_res, tol=0.005)
+
+
 @pytest.mark.parametrize(
     ("dds_kwargs", "ds_kwargs", "deseq_kwargs", "results_kwargs"),
     [
