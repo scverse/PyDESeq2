@@ -26,7 +26,7 @@ metadata = pd.read_csv(DATA_PATH + "pasilla_sample_annotation.csv", index_col="f
 # %%
 # The annotation names the samples with an ``fb`` suffix that the counts do not have.
 # Besides the treatment, it records whether each library was sequenced with single-end or paired-end reads, which we keep as a second factor.
-# Making ``condition`` an ordered categorical sets ``untreated`` as its reference level.
+# Making ``condition`` a categorical whose first category is ``untreated`` sets it as the reference level.
 
 metadata.index = metadata.index.str.removesuffix("fb")
 metadata = metadata[["condition", "type"]]

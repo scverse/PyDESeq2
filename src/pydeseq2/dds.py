@@ -71,6 +71,7 @@ class DeseqDataSet(ad.AnnData):
         Continuous factors are now automatically detected from the design, or cast to categorical using the C() operator in the formula.
     ref_level
         Deprecated.
+        Set the reference level in the design instead, e.g. with ``'~C(condition, contr.treatment(base="B"))'``.
     fit_type
         Either ``"parametric"``, ``"mean"`` or ``"local"`` for the type of fitting of dispersions to the mean intensity. ``"parametric"``: fit a dispersion-mean relation via a robust gamma-family GLM. ``"mean"``: use the mean of gene-wise dispersion estimates. ``"local"``: fit a local regression of log dispersions over log means.
         Will set the fit type for the DEA and the vst transformation.
@@ -229,7 +230,8 @@ class DeseqDataSet(ad.AnnData):
 
         if ref_level is not None:
             warnings.warn(
-                "ref_level is deprecated and no longer has any effect. It will beremoved in a future release.",
+                "ref_level is deprecated and no longer has any effect. It will be removed in a future release. "
+                "Set the reference level in the design instead, e.g. with '~C(condition, contr.treatment(base=\"B\"))'.",
                 DeprecationWarning,
                 stacklevel=2,
             )

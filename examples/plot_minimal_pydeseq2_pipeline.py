@@ -316,6 +316,26 @@ if SAVE:
 print(ds.shrunk_LFCs)  # Will be True only if lfc_shrink() was run.
 
 # %%
+# Reference level
+# """""""""""""""
+#
+# LFC coefficients are relative to the reference level of each factor, by default its first level in alphabetical order.
+# Here, ``A`` is the reference level, so there is no coefficient to shrink for a comparison of A to B.
+# To compare A to B, we set ``B`` as the reference level in the design.
+# Alternatively, ``condition`` can be made a :class:`pandas.Categorical` whose first category is ``B``.
+
+dds_ref_B = DeseqDataSet(
+    counts=counts_df,
+    metadata=metadata,
+    design='~C(condition, contr.treatment(base="B"))',
+    inference=inference,
+)
+dds_ref_B.deseq2()
+ds_A_vs_B = DeseqStats(dds_ref_B, contrast=["condition", "A", "B"], inference=inference)
+ds_A_vs_B.summary()
+ds_A_vs_B.lfc_shrink()
+
+# %%
 # .. _multifactor_ref:
 #
 # Multifactor analysis

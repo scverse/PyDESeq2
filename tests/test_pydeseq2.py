@@ -275,15 +275,14 @@ def test_cooks_outlier_with_higher_counts(counts_df, metadata, design, is_outlie
     assert dds.cooks_outlier().iloc[0] == is_outlier
 
 
-@pytest.mark.parametrize("contrast", [["condition", "B", "A"], ["condition", "A", "B"]])
-def test_lfc_shrink_default_coeff(counts_df, metadata, contrast):
+def test_lfc_shrink_default_coeff(counts_df, metadata):
     """Test that lfc_shrink shrinks the coefficient tested by the contrast when coeff is not given."""
     dds = DeseqDataSet(counts=counts_df, metadata=metadata, design="~group + condition", quiet=True)
     dds.deseq2()
 
     res = []
     for coeff in (None, "condition[T.B]"):
-        ds = DeseqStats(dds, contrast=contrast, quiet=True)
+        ds = DeseqStats(dds, contrast=["condition", "B", "A"], quiet=True)
         ds.summary()
         ds.lfc_shrink(coeff=coeff)
         res.append(ds.results_df)
@@ -298,8 +297,33 @@ def test_lfc_shrink_default_coeff_several_coefficients(counts_df, metadata):
     ds = DeseqStats(dds, contrast=np.array([0, 1, 1]), quiet=True)
     ds.summary()
 
-    with pytest.raises(ValueError, match="several LFC coefficients"):
+    with pytest.raises(ValueError, match="not a single LFC coefficient"):
         ds.lfc_shrink()
+
+
+def test_lfc_shrink_reference_level(counts_df, metadata):
+    """Test that lfc_shrink without coeff requires the reference level of the contrast to be that of the design."""
+    dds = DeseqDataSet(counts=counts_df, metadata=metadata, design="~condition", quiet=True)
+    dds.deseq2()
+    ds = DeseqStats(dds, contrast=["condition", "A", "B"], quiet=True)
+    ds.summary()
+
+    with pytest.raises(ValueError, match="reference level"):
+        ds.lfc_shrink()
+
+    ds_B_vs_A = DeseqStats(dds, contrast=["condition", "B", "A"], quiet=True)
+    ds_B_vs_A.summary()
+    ds_B_vs_A.lfc_shrink()
+
+    dds = DeseqDataSet(
+        counts=counts_df, metadata=metadata, design='~C(condition, contr.treatment(base="B"))', quiet=True
+    )
+    dds.deseq2()
+    ds = DeseqStats(dds, contrast=["condition", "A", "B"], quiet=True)
+    ds.summary()
+    ds.lfc_shrink()
+
+    np.testing.assert_allclose(ds.results_df.log2FoldChange, -ds_B_vs_A.results_df.log2FoldChange, atol=1e-3)
 
 
 def test_lrt_reduced_design_matrix(counts_df, metadata):

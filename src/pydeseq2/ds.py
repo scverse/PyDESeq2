@@ -384,21 +384,26 @@ class DeseqStats:
         ----------
         coeff
             The LFC coefficient to shrink.
-            Must be one of the columns of the LFC matrix.
-            If None, the coefficient tested by ``contrast`` is shrunk, which requires ``contrast`` to involve a single coefficient.
+            Must be one of the columns of the LFC matrix, which are relative to the reference level of each factor.
+            If None, the coefficient tested by ``contrast`` is shrunk, which requires ``contrast`` to be that coefficient alone, e.g. a level against the reference level of its factor.
         adapt
             Whether to use the MLE estimates of LFC to adapt the prior.
             If False, the prior scale is set to 1.
         """
         if coeff is None:
             tested = np.flatnonzero(self.contrast_vector)
-            if len(tested) != 1:
-                raise ValueError("The contrast involves several LFC coefficients, please provide coeff.")
+            if len(tested) != 1 or np.asarray(self.contrast_vector)[tested[0]] != 1:
+                raise ValueError(
+                    "The contrast is not a single LFC coefficient, please provide coeff "
+                    "or set the reference level of the design, e.g. with '~C(condition, contr.treatment(base=\"B\"))'."
+                )
             coeff = self.LFC.columns[tested[0]]
         if coeff not in self.LFC.columns:
             raise KeyError(
-                f"The coeff argument '{coeff}' should be one the LFC columns. "
-                f"The available LFC coeffs are {self.LFC.columns[1:]}."
+                f"The coeff argument '{coeff}' should be one of the LFC columns. "
+                f"The available LFC coeffs are {self.LFC.columns[1:]}, "
+                "relative to the reference level of the design, which can be set e.g. with "
+                "'~C(condition, contr.treatment(base=\"B\"))'."
             )
 
         coeff_idx = self.LFC.columns.get_loc(coeff)
