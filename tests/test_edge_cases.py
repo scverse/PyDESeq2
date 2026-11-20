@@ -248,21 +248,21 @@ def test_matching_samples():
         index=["sample1", "sample2", "sample3"],
     )
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="index of the design matrix"):
         design_matrix = pd.DataFrame(
             {"intercept": [1.0, 1.0, 1.0], "condition": [0, 1, 0]},
             index=["sample1", "sample2", "sample5"],
         )
         DeseqDataSet(counts=counts_df, metadata=metadata, design=design_matrix)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="index of the design matrix"):
         design_matrix = pd.DataFrame(
             {"intercept": [1.0, 1.0], "condition": [0, 1]},
             index=["sample1", "sample2"],
         )
         DeseqDataSet(counts=counts_df, metadata=metadata, design=design_matrix)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="index of the design matrix"):
         design_matrix = pd.DataFrame(
             {"intercept": [1.0, 1.0, 1.0, 1.0], "condition": [0, 1, 0, 0]},
             index=["sample1", "sample2", "sample3", "sample4"],

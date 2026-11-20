@@ -254,6 +254,8 @@ class DeseqDataSet(ad.AnnData):
             self.formulaic_contrasts = FormulaicContrasts(self.obs, self.design)
             self.obsm["design_matrix"] = pd.DataFrame(self.formulaic_contrasts.design_matrix)
         else:
+            if not self.design.index.equals(self.obs_names):
+                raise ValueError("The index of the design matrix must match the sample names of the counts.")
             self.obsm["design_matrix"] = self.design
 
         if self.obsm["design_matrix"].isna().any().any():
