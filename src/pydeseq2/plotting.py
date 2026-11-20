@@ -1,5 +1,6 @@
 """Plots of the fitted model."""
 
+from collections.abc import Sequence
 from typing import Literal
 
 import numpy as np
@@ -146,3 +147,50 @@ def make_MA_plot(
 
     if save_path is not None:
         ax.figure.savefig(save_path, bbox_inches="tight")
+
+
+def make_rle_plot(
+    counts: np.ndarray,
+    sample_names: Sequence[str],
+    save_path: str | None = None,
+    ax: Axes | None = None,
+    **kwargs,
+) -> None:
+    """
+    Create a relative log expression (RLE) plot using matplotlib.
+
+    Used in :meth:`pydeseq2.dds.DeseqDataSet.plot_rle()`.
+
+    Parameters
+    ----------
+    counts
+        Counts, one row per sample and one column per gene.
+    sample_names
+        Names of the samples, used as labels of the x axis.
+    save_path
+        The path where to save the plot.
+        If left None, the plot won't be saved.
+    ax
+        The axes to plot on.
+        If left None, a new figure is created and shown.
+    **kwargs
+        Matplotlib keyword arguments for the box plot.
+    """
+    log_counts = np.log2(counts + 1)
+    rle = log_counts - np.median(log_counts, axis=0)
+
+    show = ax is None
+    if ax is None:
+        _, ax = plt.subplots(dpi=600, layout="tight")
+
+    kwargs.setdefault("showfliers", False)
+    ax.boxplot(rle.T, tick_labels=sample_names, **kwargs)
+    ax.tick_params(axis="x", labelrotation=90)
+    ax.axhline(0, color="red", alpha=0.5, linestyle="--", zorder=3)
+
+    ax.set_xlabel("sample")
+    ax.set_ylabel("relative log expression")
+    if save_path is not None:
+        ax.figure.savefig(save_path, bbox_inches="tight")
+    if show:
+        plt.show()

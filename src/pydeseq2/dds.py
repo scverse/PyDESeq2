@@ -25,6 +25,7 @@ from pydeseq2.distributions import nb_nll
 from pydeseq2.inference import Inference
 from pydeseq2.misc import n_or_more_replicates
 from pydeseq2.misc import test_valid_counts
+from pydeseq2.plotting import make_rle_plot
 from pydeseq2.plotting import make_scatter
 from pydeseq2.preprocessing import deseq2_norm_fit
 from pydeseq2.preprocessing import deseq2_norm_transform
@@ -1102,6 +1103,36 @@ class DeseqDataSet(ad.AnnData):
             legend_labels=legend_labels,
             x_val=self.var["_normed_means"].to_numpy(),
             log=log,
+            save_path=save_path,
+            ax=ax,
+            **kwargs,
+        )
+
+    def plot_rle(self, normalize: bool = True, save_path: str | None = None, ax: Axes | None = None, **kwargs) -> None:
+        """Plot the relative log expression (RLE) of each sample.
+
+        Make a box plot per sample of the log counts of each gene minus its median across samples.
+        Boxes centered on zero with similar spreads indicate that the samples are well normalized.
+
+        Parameters
+        ----------
+        normalize
+            Whether to plot normalized counts instead of raw counts.
+            Size factors are fitted first if needed.
+        save_path
+            The path where to save the plot.
+            If left None, the plot won't be saved.
+        ax
+            The axes to plot on.
+            If left None, a new figure is created and shown.
+        **kwargs
+            Keyword arguments for the box plot.
+        """
+        if normalize and "normed_counts" not in self.layers:
+            self.fit_size_factors(fit_type=self.size_factors_fit_type)
+        make_rle_plot(
+            self.layers["normed_counts"] if normalize else self.X,
+            sample_names=self.obs_names,
             save_path=save_path,
             ax=ax,
             **kwargs,

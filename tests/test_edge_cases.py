@@ -621,6 +621,22 @@ def test_plot_ax():
     assert all(ax.collections for ax in axes)
 
 
+def test_plot_rle():
+    """Test that the RLE plot is flat for samples that only differ by their sequencing depth once normalized."""
+    counts = np.random.default_rng(42).poisson(100, size=(1, 50)) * np.array([[1], [2], [4]])
+    counts_df = pd.DataFrame(counts, index=["a", "b", "c"], columns=[f"gene{i}" for i in range(50)])
+    metadata = pd.DataFrame({"condition": ["A", "A", "B"]}, index=counts_df.index)
+    dds = DeseqDataSet(counts=counts_df, metadata=metadata, quiet=True)
+
+    _, axes = plt.subplots(ncols=2)
+    dds.plot_rle(ax=axes[0])
+    dds.plot_rle(normalize=False, ax=axes[1])
+
+    assert [label.get_text() for label in axes[0].get_xticklabels()] == ["a", "b", "c"]
+    assert all(np.allclose(line.get_ydata(), 0) for line in axes[0].lines)
+    assert not all(np.allclose(line.get_ydata(), 0) for line in axes[1].lines)
+
+
 def test_irls_fallback_bounds():
     """Test that the optimizer fallback of the IRLS bounds coefficients on the log2 scale."""
     design_matrix = np.column_stack([np.ones(20), np.repeat([0, 1], 10)])

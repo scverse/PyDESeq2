@@ -7,6 +7,7 @@ The experiment knocks down the *pasilla* gene in *Drosophila melanogaster* cells
 """
 
 import pandas as pd
+from matplotlib import pyplot as plt
 
 from pydeseq2.dds import DeseqDataSet
 from pydeseq2.ds import DeseqStats
@@ -49,6 +50,17 @@ counts_df.shape
 
 dds = DeseqDataSet(counts=counts_df, metadata=metadata, design="~type + condition", quiet=True)
 dds.deseq2()
+
+# %%
+# The relative log expression (RLE) of a sample is the log count of each gene minus its median across samples.
+# On raw counts, the RLE follows the sequencing depths, which are higher for the single-end libraries.
+# Normalizing the counts by the size factors centers it on zero.
+
+_, axes = plt.subplots(ncols=2, sharey=True, layout="constrained")
+dds.plot_rle(normalize=False, ax=axes[0])
+dds.plot_rle(ax=axes[1])
+axes[0].set_title("raw counts")
+axes[1].set_title("normalized counts")
 
 # %%
 # Statistical analysis
