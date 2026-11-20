@@ -41,7 +41,8 @@ class DeseqStats:
     independent_filter
         Whether to perform independent filtering to correct p-value trends. (default: ``True``).
     prior_LFC_var
-        Prior variance for LFCs, used for ridge regularization. (default: ``None``).
+        Prior variance of the LFCs on the natural log scale, one value per column of the design matrix.
+        Its reciprocal is the ridge penalty of the Wald test. (default: ``None``).
     lfc_null
         The (log2) log fold change under the null hypothesis. (default: ``0``).
     alt_hypothesis
@@ -271,7 +272,7 @@ class DeseqStats:
 
         # Set regularization factors.
         if self.prior_LFC_var is not None:
-            ridge_factor = np.diag(1 / self.prior_LFC_var**2)
+            ridge_factor = np.diag(1 / self.prior_LFC_var)
         else:
             ridge_factor = np.diag(np.repeat(1e-6, num_vars))
 

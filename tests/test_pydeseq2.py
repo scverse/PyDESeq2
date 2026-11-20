@@ -237,6 +237,34 @@ def test_alt_hypothesis(alt_hypothesis, counts_df, metadata, tol=0.02):
     ).max() < tol
 
 
+def test_prior_lfc_var(counts_df, metadata):
+    """Test that ``prior_LFC_var`` sets the ridge penalty of the Wald test to its reciprocal, not to the reciprocal of its square."""
+
+    dds = DeseqDataSet(counts=counts_df, metadata=metadata, design="~condition", quiet=True)
+    dds.deseq2()
+
+    prior_LFC_var = np.array([4.0, 4.0])
+    ds = DeseqStats(dds, contrast=["condition", "B", "A"], prior_LFC_var=prior_LFC_var, quiet=True)
+    ds.run_wald_test()
+
+    # The same Wald test with the ridge penalty 1 / prior_LFC_var
+    mu = np.exp(ds.design_matrix @ ds.LFC.T).multiply(dds.obs["size_factors"], 0).values
+    pvals, stats, se = ds.inference.wald_test(
+        design_matrix=ds.design_matrix.values,
+        disp=dds.var["dispersions"].to_numpy(),
+        lfc=ds.LFC.values,
+        mu=mu,
+        ridge_factor=np.diag(1 / prior_LFC_var),
+        contrast=ds.contrast_vector,
+        lfc_null=0.0,
+        alt_hypothesis=None,
+    )
+
+    np.testing.assert_allclose(ds.SE, se)
+    np.testing.assert_allclose(ds.statistics, stats)
+    np.testing.assert_allclose(ds.p_values, pvals)
+
+
 def test_deseq_no_refit_cooks(counts_df, metadata, tol=0.02):
     """Test that the outputs of the DESeq2 function *without cooks refit* match those of the original R package, up to a tolerance in relative error.
     Note: this is just to check that the workflow runs bug-free, as we expect no outliers in the synthetic dataset.
