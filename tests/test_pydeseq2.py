@@ -10,6 +10,7 @@ from formulaic import model_matrix
 import tests
 from pydeseq2.datasets import load_example_data
 from pydeseq2.dds import DeseqDataSet
+from pydeseq2.default_inference import DefaultInference
 from pydeseq2.ds import DeseqStats
 from pydeseq2.preprocessing import deseq2_norm
 from pydeseq2.preprocessing import deseq2_norm_fit
@@ -324,6 +325,21 @@ def test_lfc_shrink_reference_level(counts_df, metadata):
     ds.lfc_shrink()
 
     np.testing.assert_allclose(ds.results_df.log2FoldChange, -ds_B_vs_A.results_df.log2FoldChange, atol=1e-3)
+
+
+@pytest.mark.parametrize("backend", ["threading", "multiprocessing", "sequential"])
+def test_joblib_backends(counts_df, metadata, backend):
+    """Test that the joblib backends other than loky give the same results."""
+    res = []
+    for inference in (DefaultInference(n_cpus=2), DefaultInference(n_cpus=2, backend=backend)):
+        dds = DeseqDataSet(counts=counts_df, metadata=metadata, inference=inference, quiet=True)
+        dds.deseq2()
+        ds = DeseqStats(dds, contrast=["condition", "B", "A"], inference=inference, quiet=True)
+        ds.summary()
+        ds.lfc_shrink()
+        res.append(ds.results_df)
+
+    pd.testing.assert_frame_equal(*res)
 
 
 def test_lrt_reduced_design_matrix(counts_df, metadata):
