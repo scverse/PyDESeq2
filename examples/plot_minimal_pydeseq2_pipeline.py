@@ -407,3 +407,15 @@ ds_Y_vs_X.summary()
 # Without ``coeff``, :meth:`lfc_shrink() <DeseqStats.lfc_shrink>` shrinks the coefficient that ``contrast`` tests, here ``condition[T.B]``.
 
 ds_B_vs_A.lfc_shrink()
+
+# %%
+# Likelihood ratio test
+# """""""""""""""""""""
+#
+# Instead of a Wald test of one contrast, a likelihood ratio test compares the design to a reduced design without some of its terms, as ``test="LRT"`` does in DESeq2.
+# It tests all the removed coefficients at once, e.g. all the levels of a factor with more than two levels, or an interaction.
+# Here, the reduced design ``"~group"`` tests whether ``condition`` has any effect.
+# LFCs and their standard errors still refer to ``contrast``.
+
+ds_lrt = DeseqStats(dds, contrast=["condition", "B", "A"], reduced="~group", inference=inference)
+ds_lrt.summary()

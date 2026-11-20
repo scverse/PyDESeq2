@@ -302,6 +302,56 @@ def test_lfc_shrink_default_coeff_several_coefficients(counts_df, metadata):
         ds.lfc_shrink()
 
 
+def test_lrt_reduced_design_matrix(counts_df, metadata):
+    """Test that the likelihood ratio test gives the same results with a reduced formula or design matrix."""
+    dds = DeseqDataSet(counts=counts_df, metadata=metadata, design="~group + condition", quiet=True)
+    dds.deseq2()
+
+    res = []
+    for reduced in ("~group", model_matrix("~group", metadata)):
+        ds = DeseqStats(dds, contrast=["condition", "B", "A"], reduced=reduced, quiet=True)
+        ds.summary()
+        res.append(ds.results_df)
+
+    pd.testing.assert_frame_equal(*res)
+
+
+def test_lrt_unchanged_by_lfc_shrink(counts_df, metadata):
+    """Test that LFC shrinkage leaves the statistics of the likelihood ratio test unchanged."""
+    dds = DeseqDataSet(counts=counts_df, metadata=metadata, design="~group + condition", quiet=True)
+    dds.deseq2()
+    ds = DeseqStats(dds, contrast=["condition", "B", "A"], reduced="~group", quiet=True)
+    ds.summary()
+    stats = ds.statistics.copy()
+
+    ds.lfc_shrink(coeff="condition[T.B]")
+    ds.run_likelihood_ratio_test()
+
+    pd.testing.assert_series_equal(ds.statistics, stats)
+
+
+@pytest.mark.parametrize(
+    ("design", "reduced"),
+    [("~group + condition", "~group + condition"), ("~condition", "~group")],
+)
+def test_lrt_invalid_reduced(counts_df, metadata, design, reduced):
+    """Test that a reduced design that is not nested in the full design with fewer columns raises a ValueError."""
+    dds = DeseqDataSet(counts=counts_df, metadata=metadata, design=design, quiet=True)
+    dds.deseq2()
+
+    with pytest.raises(ValueError, match="reduced design must"):
+        DeseqStats(dds, contrast=["condition", "B", "A"], reduced=reduced, quiet=True)
+
+
+def test_lrt_lfc_null(counts_df, metadata):
+    """Test that a ValueError is raised when lfc_null is used with a likelihood ratio test."""
+    dds = DeseqDataSet(counts=counts_df, metadata=metadata, design="~group + condition", quiet=True)
+    dds.deseq2()
+
+    with pytest.raises(ValueError, match="only supported by the Wald test"):
+        DeseqStats(dds, contrast=["condition", "B", "A"], reduced="~group", lfc_null=1, quiet=True).summary()
+
+
 def test_lfc_shrinkage(counts_df, metadata, tol=0.02):
     """Test that the outputs of the lfc_shrink function match those of the original R package (starting from the same inputs), up to a tolerance in relative error."""
 

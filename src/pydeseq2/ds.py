@@ -5,13 +5,16 @@ from typing import Literal
 # import anndata as ad
 import numpy as np
 import pandas as pd
+from formulaic_contrasts import FormulaicContrasts  # type: ignore[import-untyped]
 from matplotlib.axes import Axes
 from scipy.optimize import root_scalar  # type: ignore
+from scipy.stats import chi2  # type: ignore
 from scipy.stats import false_discovery_control  # type: ignore
 
 from pydeseq2._logging import logger
 from pydeseq2.dds import DeseqDataSet
 from pydeseq2.default_inference import DefaultInference
+from pydeseq2.distributions import nb_nll
 from pydeseq2.inference import Inference
 from pydeseq2.plotting import make_MA_plot
 from pydeseq2.stats import lowess
@@ -23,6 +26,8 @@ class DeseqStats:
     Implements p-value estimation for differential gene expression according to the DESeq2 pipeline :cite:p:`DeseqStats-love2014moderated`.
 
     Also supports apeGLM log-fold change shrinkage :cite:p:`DeseqStats-zhu2019heavy`.
+
+    P-values come from a Wald test of the contrast, or from a likelihood ratio test against a reduced design when ``reduced`` is given.
 
     Parameters
     ----------
@@ -49,6 +54,11 @@ class DeseqStats:
         By default, the normal Wald test assesses deviation of the estimated log fold change from the null hypothesis, as given by ``lfc_null``.
         One of ``["greaterAbs", "lessAbs", "greater", "less"]`` or ``None``.
         The alternative hypothesis corresponds to what the user wants to find rather than the null hypothesis.
+    reduced
+        Reduced design for a likelihood ratio test, nested in the design of ``dds``.
+        Either a formula, e.g. ``"~group"`` to test all the coefficients that ``dds`` adds to it, or a design matrix if ``dds`` was built from one.
+        LFCs and their standard errors still refer to ``contrast``.
+        If None, p-values come from a Wald test.
     inference
         Implementation of inference routines object instance.
         If None, a :class:`DefaultInference <pydeseq2.default_inference.DefaultInference>` is used.
@@ -75,10 +85,12 @@ class DeseqStats:
         Estimated log-fold change between conditions and intercept, in natural log scale.
     SE
         Standard LFC error.
+    reduced_design_matrix
+        Design matrix of the reduced model, if ``reduced`` is given.
     statistics
-        Wald statistics.
+        Wald or likelihood ratio statistics.
     p_values
-        P-values estimated from Wald statistics.
+        P-values estimated from the statistics.
     padj
         P-values adjusted for multiple testing.
     results_df
@@ -106,6 +118,7 @@ class DeseqStats:
         prior_LFC_var: np.ndarray | None = None,
         lfc_null: float = 0.0,
         alt_hypothesis: (Literal["greaterAbs", "lessAbs", "greater", "less"] | None) = None,
+        reduced: str | pd.DataFrame | None = None,
         inference: Inference | None = None,
         quiet: bool = False,
         n_cpus: int | None = None,
@@ -148,6 +161,10 @@ class DeseqStats:
         else:
             self.contrast = contrast
             self._build_contrast_vector()
+
+        self.reduced = reduced
+        if reduced is not None:
+            self._build_reduced_design_matrix(reduced)
 
         # Set a flag to indicate that LFCs are unshrunk
         self.shrunk_LFCs = False
@@ -211,6 +228,10 @@ class DeseqStats:
                 f"The alternative hypothesis being {alt_hypothesis}, please provide a",
                 f"positive lfc_null value (got {lfc_null}).",
             )
+        if self.reduced is not None and (lfc_null != 0 or alt_hypothesis is not None):
+            raise ValueError(
+                "lfc_null and alt_hypothesis are only supported by the Wald test, not with a reduced design."
+            )
 
         if not hasattr(self, "p_values") or self.lfc_null != lfc_null or self.alt_hypothesis != alt_hypothesis:
             # Estimate p-values with Wald test
@@ -218,6 +239,8 @@ class DeseqStats:
             self.alt_hypothesis = alt_hypothesis
             rerun_summary = True
             self.run_wald_test()
+            if self.reduced is not None:
+                self.run_likelihood_ratio_test()
 
         if self.cooks_filter:
             # Filter p-values based on Cooks outliers
@@ -242,14 +265,13 @@ class DeseqStats:
         self.results_df["padj"] = self.padj
 
         if not self.quiet:
+            test = "Wald test" if self.reduced is None else "LRT"
             if isinstance(self.contrast, np.ndarray):
                 # The contrast vector was directly provided
-                print(f"Log2 fold change & Wald test p-value, contrast vector: {self.contrast}")
+                print(f"Log2 fold change & {test} p-value, contrast vector: {self.contrast}")
             else:
                 # The factor is categorical
-                print(
-                    f"Log2 fold change & Wald test p-value: {self.contrast[0]} {self.contrast[1]} vs {self.contrast[2]}"
-                )
+                print(f"Log2 fold change & {test} p-value: {self.contrast[0]} {self.contrast[1]} vs {self.contrast[2]}")
             print(self.results_df)
 
     def run_wald_test(self) -> None:
@@ -305,6 +327,51 @@ class DeseqStats:
         # Account for possible all_zeroes due to outlier refitting in DESeqDataSet
         if self.dds.refit_cooks and self.dds.var["replaced"].sum() > 0:
             self.SE.loc[self.dds.new_all_zeroes_genes] = 0.0
+            self.statistics.loc[self.dds.new_all_zeroes_genes] = 0.0
+            self.p_values.loc[self.dds.new_all_zeroes_genes] = 1.0
+
+    def run_likelihood_ratio_test(self) -> None:
+        """Perform a likelihood ratio test of the design of ``dds`` against the reduced design.
+
+        The reduced model is fitted with the dispersions of the full model, and the statistic, twice the difference of their log-likelihoods, is compared to a chi-squared distribution.
+        """
+        non_zero_idx = self.dds.non_zero_idx
+        counts = np.array(self.dds.X[:, non_zero_idx], dtype=float)
+        if self.dds.refit_cooks and self.dds.var["replaced"].sum() > 0:
+            refitted = self.dds.var_names[non_zero_idx].get_indexer(self.dds.counts_to_refit.var_names)
+            counts[:, refitted] = self.dds.counts_to_refit.X
+        size_factors = self.dds.obs["size_factors"].to_numpy()
+        disp = self.dds.var["dispersions"].to_numpy()[non_zero_idx]
+
+        if not self.quiet:
+            logger.info("Running likelihood ratio tests...")
+        start = time.time()
+        if (self.reduced_design_matrix.values == 1).all():
+            mu_reduced = size_factors[:, None] * (counts / size_factors[:, None]).mean(axis=0)
+        else:
+            _, mu_reduced, _, _ = self.inference.irls(
+                counts=counts,
+                size_factors=size_factors,
+                design_matrix=self.reduced_design_matrix.values,
+                disp=disp,
+                min_mu=self.dds.min_mu,
+                beta_tol=self.dds.beta_tol,
+            )
+        end = time.time()
+        if not self.quiet:
+            logger.info("... done in %.2f seconds.", end - start)
+
+        lfc = self.dds.varm["LFC"].to_numpy()[non_zero_idx]
+        mu_full = size_factors[:, None] * np.exp(self.dds.obsm["design_matrix"].values @ lfc.T)
+        stats = 2 * (nb_nll(counts, mu_reduced, disp) - nb_nll(counts, mu_full, disp))
+        df = self.dds.obsm["design_matrix"].shape[1] - self.reduced_design_matrix.shape[1]
+
+        self.statistics = pd.Series(np.nan, index=self.dds.var_names)
+        self.p_values = pd.Series(np.nan, index=self.dds.var_names)
+        self.statistics.iloc[non_zero_idx] = stats
+        self.p_values.iloc[non_zero_idx] = chi2.sf(stats, df)
+
+        if self.dds.refit_cooks and self.dds.var["replaced"].sum() > 0:
             self.statistics.loc[self.dds.new_all_zeroes_genes] = 0.0
             self.p_values.loc[self.dds.new_all_zeroes_genes] = 1.0
 
@@ -541,3 +608,21 @@ class DeseqStats:
         alternative = self.contrast[1]
         ref = self.contrast[2]
         self.contrast_vector = self.dds.contrast(column=factor, baseline=ref, group_to_compare=alternative)
+
+    def _build_reduced_design_matrix(self, reduced: str | pd.DataFrame) -> None:
+        """Build the design matrix of the reduced model and check that it is nested in the full design."""
+        full = self.dds.obsm["design_matrix"]
+        if isinstance(reduced, str):
+            if not isinstance(self.dds.design, str):
+                raise ValueError("The reduced design must be a design matrix when dds was built from a design matrix.")
+            reduced = FormulaicContrasts(self.dds.obs, reduced).design_matrix
+        elif not reduced.index.equals(self.dds.obs_names):
+            raise ValueError("The index of the reduced design matrix must match the sample names of dds.")
+        self.reduced_design_matrix = pd.DataFrame(reduced, index=self.dds.obs_names).astype(float)
+
+        if self.reduced_design_matrix.shape[1] >= full.shape[1]:
+            raise ValueError("The reduced design must have fewer columns than the design of dds.")
+        if np.linalg.matrix_rank(np.c_[full.values, self.reduced_design_matrix.values]) > np.linalg.matrix_rank(
+            full.values
+        ):
+            raise ValueError("The reduced design must be nested in the design of dds.")
