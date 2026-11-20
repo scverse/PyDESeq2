@@ -35,22 +35,23 @@ class DeseqStats:
         E.g., ``['condition', 'B', 'A']`` will measure the LFC of 'condition B' compared to 'condition A'.
         If a numpy array, it must be a contrast vector of the same length as the design matrix.
     alpha
-        P-value and adjusted p-value significance threshold (usually 0.05). (default: ``0.05``).
+        P-value and adjusted p-value significance threshold (usually 0.05).
     cooks_filter
-        Whether to filter p-values based on cooks outliers. (default: ``True``).
+        Whether to filter p-values based on cooks outliers.
     independent_filter
-        Whether to perform independent filtering to correct p-value trends. (default: ``True``).
+        Whether to perform independent filtering to correct p-value trends.
     prior_LFC_var
-        Prior variance for LFCs, used for ridge regularization. (default: ``None``).
+        Prior variance for LFCs, used for ridge regularization.
     lfc_null
-        The (log2) log fold change under the null hypothesis. (default: ``0``).
+        The (log2) log fold change under the null hypothesis.
     alt_hypothesis
         The alternative hypothesis for computing wald p-values.
         By default, the normal Wald test assesses deviation of the estimated log fold change from the null hypothesis, as given by ``lfc_null``.
         One of ``["greaterAbs", "lessAbs", "greater", "less"]`` or ``None``.
-        The alternative hypothesis corresponds to what the user wants to find rather than the null hypothesis. (default: ``None``).
+        The alternative hypothesis corresponds to what the user wants to find rather than the null hypothesis.
     inference
-        Implementation of inference routines object instance. (default: :class:`DefaultInference <pydeseq2.default_inference.DefaultInference>`).
+        Implementation of inference routines object instance.
+        If None, a :class:`DefaultInference <pydeseq2.default_inference.DefaultInference>` is used.
     quiet
         Suppress the printed results, and the status updates that are otherwise logged at the info level.
 
@@ -317,10 +318,10 @@ class DeseqStats:
         ----------
         coeff
             The LFC coefficient to shrink.
-            Must be one of the columns of the LFC matrix. (default: ``None``).
+            Must be one of the columns of the LFC matrix.
         adapt
             Whether to use the MLE estimates of LFC to adapt the prior.
-            If False, the prior scale is set to 1. (``default=True``)
+            If False, the prior scale is set to 1.
         """
         if coeff not in self.LFC.columns:
             raise KeyError(
@@ -402,13 +403,13 @@ class DeseqStats:
         Parameters
         ----------
         log
-            Whether or not to log scale x and y axes (``default=True``).
+            Whether or not to log scale x and y axes.
         save_path
             The path where to save the plot.
-            If left None, the plot won't be saved (``default=None``).
+            If left None, the plot won't be saved.
         ax
             The axes to plot on.
-            If left None, a new figure is created (``default=None``).
+            If left None, a new figure is created.
         **kwargs
             Matplotlib keyword arguments for the scatter plot.
         """
@@ -502,9 +503,9 @@ class DeseqStats:
         coeff_idx
             Index of the coefficient to shrink.
         min_var
-            Lower bound for prior variance. (default: ``1e-6``).
+            Lower bound for prior variance.
         max_var
-            Upper bound for prior variance. (default: ``400``).
+            Upper bound for prior variance.
 
         Returns
         -------

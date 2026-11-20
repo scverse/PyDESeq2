@@ -73,7 +73,7 @@ def get_num_processes(n_cpus: int | None) -> int:
     ----------
     n_cpus
         Desired number of cpus.
-        If ``None``, will return the number of available cpus. (default: ``None``).
+        If ``None``, will return the number of available cpus.
 
     Returns
     -------

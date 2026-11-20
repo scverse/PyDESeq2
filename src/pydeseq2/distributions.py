@@ -132,7 +132,7 @@ def nbinomFn(
     prior_scale
         Prior variance for the intercept.
     shrink_index
-        Index of the LFC coordinate to shrink. (default: ``1``).
+        Index of the LFC coordinate to shrink.
 
     Returns
     -------
@@ -184,9 +184,9 @@ def nbinomGLM(
         Prior variance for the LFC parameter.
     optimizer
         Optimizing method to use in case IRLS starts diverging.
-        Accepted values: 'L-BFGS-B', 'BFGS' or 'Newton-CG'. (default: ``'Newton-CG'``).
+        Accepted values: 'L-BFGS-B', 'BFGS' or 'Newton-CG'.
     shrink_index
-        Index of the LFC coordinate to shrink. (default: ``1``).
+        Index of the LFC coordinate to shrink.
 
     Returns
     -------

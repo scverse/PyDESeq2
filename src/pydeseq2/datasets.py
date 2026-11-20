@@ -25,12 +25,12 @@ def load_example_data(
         Data modality. "raw_counts" or "metadata".
     dataset
         The dataset for which to return gene expression data.
-        If "synthetic", will return the synthetic data that is used for CI unit tests. (default: ``"synthetic"``).
+        If "synthetic", will return the synthetic data that is used for CI unit tests.
     debug
         If true, subsample 10 samples and 100 genes at random.
-        (Note that the "synthetic" dataset is already 10 features 100.) (default: ``False``).
+        (Note that the "synthetic" dataset is already 10 features 100.)
     debug_seed
-        Seed for the debug mode. (default: ``42``).
+        Seed for the debug mode.
 
     Returns
     -------
