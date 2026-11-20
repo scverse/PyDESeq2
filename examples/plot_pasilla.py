@@ -1,8 +1,8 @@
 """
-Real data: the pasilla dataset
-==============================
+The pasilla dataset
+===================
 
-This tutorial runs a differential expression analysis on real RNA-seq data, the pasilla dataset of `Brooks et al. (2011) <https://doi.org/10.1101/gr.108662.110>`_, which the DESeq2 vignette also uses.
+This tutorial runs a differential expression analysis on the pasilla RNA-seq dataset of `Brooks et al. (2011) <https://doi.org/10.1101/gr.108662.110>`_, which the DESeq2 vignette also uses.
 The experiment knocks down the *pasilla* gene in *Drosophila melanogaster* cells, and compares 3 treated samples to 4 untreated ones.
 """
 
