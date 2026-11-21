@@ -45,3 +45,8 @@ def test_dispersion_fallback_preserves_objective(monkeypatch, optimizer, cr_reg,
     assert expected.success and not converged
     assert np.log(actual) == pytest.approx(expected.x, abs=0.002)
     assert objective(np.log(actual)) <= expected.fun + 1e-4
+
+
+def test_trimmed_variance_axis_1():
+    x = np.array([[1.0, 2, 30], [4, 5, 6], [70, 8, 9]])
+    np.testing.assert_allclose(dispersions.trimmed_variance(x, trim=0, axis=1), 1.51 * np.var(x, axis=1))
