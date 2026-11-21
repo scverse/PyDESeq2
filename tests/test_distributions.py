@@ -46,3 +46,24 @@ def test_nbinom_glm_large_covariate():
 
     assert np.isfinite(beta).all()
     assert np.isfinite(inv_hessian).all()
+
+
+@pytest.mark.parametrize(
+    ("counts", "dispersion", "prior_scale", "expected"),
+    [
+        ([10, 12, 9, 11, 30, 28, 33, 31], 1e-1, 1.0, [2.3997, 0.9851]),
+        ([10, 12, 9, 11, 30, 28, 33, 31], 1e-6, 1.0, [2.3747, 1.0348]),
+        ([10, 12, 9, 11, 30, 28, 33, 31], 1e-8, 1.0, [2.3747, 1.0349]),
+        ([413, 177, 16, 5, 7789, 11230, 12823, 8858], 1.42, 1e-3, [5.2244, 3.8334]),
+    ],
+)
+def test_nbinom_glm_apeglm(counts, dispersion, prior_scale, expected):
+    """Test that the shrinkage fit finds the MAP of apeglm 1.32.0 at low dispersions and with a narrow prior."""
+    design = np.column_stack([np.ones(8), np.repeat([0.0, 1.0], 4)])
+
+    beta, _, converged = nbinomGLM(
+        design, np.array(counts, dtype=float), 1 / dispersion, np.zeros(8), 15.0, prior_scale
+    )
+
+    assert converged
+    np.testing.assert_allclose(beta, expected, atol=1e-3)

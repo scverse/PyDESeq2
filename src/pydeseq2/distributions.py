@@ -136,7 +136,7 @@ def nbinomFn(
 
     Returns
     -------
-    Sum of the NB negative likelihood and apeGLM prior.
+    Sum of the NB negative likelihood and apeGLM prior, without the terms that do not depend on ``beta``.
     """
     num_vars = design_matrix.shape[-1]
 
@@ -149,7 +149,7 @@ def nbinomFn(
         (beta[shrink_index] / prior_scale) ** 2
     )
 
-    nll = (counts * xbeta - (counts + size) * np.logaddexp(xbeta + offset, np.log(size))).sum(axis=0)
+    nll = (counts * xbeta - (counts + size) * np.logaddexp(0, xbeta + offset - np.log(size))).sum(axis=0)
 
     return prior - nll
 
@@ -265,7 +265,7 @@ def nbinomGLM(
         hess=ddf if optimizer == "Newton-CG" else None,
         method=optimizer,
         options={
-            "ftol": 1e-8,
+            "ftol": 1e-12,
             "gtol": 1e-8,
         },
     )
