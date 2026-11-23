@@ -1168,11 +1168,44 @@ class DeseqDataSet(ad.AnnData):
                 targets = targets.drop(labels=[gene])
                 covariates = covariates.drop(labels=[gene])
 
-        # Initialize coefficients
-        old_coeffs: np.ndarray | pd.Series = pd.Series([0.1, 0.1])
-        coeffs: np.ndarray | pd.Series = pd.Series([1.0, 1.0])
+        # Only genes with a dispersion above 100 * min_disp enter the trend fit,
+        # as in DESeq2's estimateDispersionsFit.
+        eligible = targets > 100 * self.min_disp
+        targets_all = targets[eligible]
+        covariates_all = covariates[eligible]
+
+        if len(targets_all) == 0:
+            warnings.warn(
+                "No genes have a dispersion above 100 * min_disp. Switching to a mean-based dispersion trend.",
+                UserWarning,
+                stacklevel=2,
+            )
+            self._fit_mean_dispersion_trend(vst)
+            return
+
+        # Start from DESeq2's starting curve (a0, a1) = (0.1, 1), and before every
+        # fit select from all eligible genes the ones whose dispersion lies within
+        # [1e-4, 15) of the current curve, so a gene dropped from the fit can return
+        # when the curve moves back towards it.
+        old_coeffs: np.ndarray | pd.Series = pd.Series([1.0, 1.0])
+        coeffs: np.ndarray | pd.Series = pd.Series([0.1, 1.0])
         while (coeffs > 1e-10).all() and (np.log(np.abs(coeffs / old_coeffs)) ** 2).sum() >= 1e-6:
             old_coeffs = coeffs
+            predictions = coeffs[0] + coeffs[1] * covariates_all
+            pred_ratios = targets_all / predictions
+            in_window = (pred_ratios >= 1e-4) & (pred_ratios < 15)
+            targets = targets_all[in_window]
+            covariates = covariates_all[in_window]
+
+            if len(targets) == 0:
+                warnings.warn(
+                    "No genes lie within the dispersion trend fitting window. Switching to a mean-based dispersion trend.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                self._fit_mean_dispersion_trend(vst)
+                return
+
             coeffs, predictions, converged = self.inference.dispersion_trend_gamma_glm(covariates, targets)
             if not converged or (coeffs <= 1e-10).any():
                 warnings.warn(
@@ -1183,12 +1216,6 @@ class DeseqDataSet(ad.AnnData):
 
                 self._fit_mean_dispersion_trend(vst)
                 return
-
-            # Filter out genes that are too far away from the curve before refitting
-            pred_ratios = self.var.loc[covariates.index, disp_param_name] / predictions
-
-            targets = targets.drop(targets[(pred_ratios < 1e-4) | (pred_ratios >= 15)].index)
-            covariates = covariates.drop(covariates[(pred_ratios < 1e-4) | (pred_ratios >= 15)].index)
 
         trend_coeffs = {"a0": float(coeffs[0]), "a1": float(coeffs[1])}
         if vst:

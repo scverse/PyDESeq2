@@ -655,3 +655,45 @@ def test_irls_fallback_zero_counts():
     _, mu, _, _ = irls_solver(counts, np.ones(20), design_matrix, disp=0.1, maxiter=1)
 
     assert (mu[:10] < 1e-3).all()
+
+
+def test_parametric_trend_ignores_single_sample_gene():
+    """Test that the parametric dispersion trend is unchanged by a gene with a single positive count.
+
+    DESeq2's estimateDispersionsFit only fits the trend on genes with a dispersion
+    above 100 * minDisp, and its parametricDispersionFit re-selects the genes within
+    [1e-4, 15) of the current curve before every fit, starting from (0.1, 1), so a
+    single-sample gene never bends the trend. Regression test for #512.
+    """
+    rng = np.random.default_rng(1)
+    n_genes = 100
+    groups = (6, 6)
+    group = np.repeat(np.arange(len(groups)), groups)
+    base = rng.lognormal(4, 1.5, n_genes)
+    lfc = rng.normal(0, 0.5, (len(groups), n_genes))
+    lfc[0] = 0
+    mu = base * np.exp(lfc[group])
+    disp = 0.05 + 1 / base
+    counts = rng.negative_binomial(1 / disp, 1 / (1 + disp * mu))
+    samples = [f"s{i}" for i in range(len(group))]
+    counts_df = pd.DataFrame(counts, index=samples, columns=[f"g{j}" for j in range(n_genes)])
+    metadata = pd.DataFrame({"condition": np.array(list("ABCDEF"))[group]}, index=samples)
+
+    trend_coeffs = []
+    for with_single in [False, True]:
+        counts_run = counts_df.copy()
+        if with_single:
+            counts_run["single"] = [0] * 11 + [30]
+        dds = DeseqDataSet(counts=counts_run, metadata=metadata, n_cpus=1, quiet=True)
+        dds.fit_size_factors()
+        dds.fit_genewise_dispersions()
+        dds.fit_dispersion_trend()
+        trend_coeffs.append(dds.uns["trend_coeffs"])
+
+    # The single-sample gene must not move the trend: DESeq2 1.50.2 gives the same
+    # coefficients with and without it.
+    assert trend_coeffs[0]["a0"] == pytest.approx(trend_coeffs[1]["a0"], abs=1e-3)
+    assert trend_coeffs[0]["a1"] == pytest.approx(trend_coeffs[1]["a1"], abs=1e-3)
+    # Reference values from the issue.
+    assert trend_coeffs[1]["a0"] == pytest.approx(0.0507, abs=1e-3)
+    assert trend_coeffs[1]["a1"] == pytest.approx(1.7973, abs=1e-3)
