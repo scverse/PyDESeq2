@@ -238,13 +238,19 @@ def wald_test(
     wald_se: float = np.sqrt(Hc.T @ M @ Hc)
 
     def greater(lfc_null):
-        stat = contrast @ np.fmax((lfc - lfc_null) / wald_se, 0)
-        pval = norm.sf(stat)
+        # The reported statistic is clipped at 0, but the p-value comes from
+        # the unclipped statistic, as in DESeq2: using the clipped statistic
+        # gives p-value 0.5 to every gene on the far side of the threshold.
+        stat_unclipped = float(contrast @ (lfc - lfc_null) / wald_se)
+        stat = max(stat_unclipped, 0)
+        pval = norm.sf(stat_unclipped)
         return stat, pval
 
     def less(lfc_null):
-        stat = contrast @ np.fmin((lfc - lfc_null) / wald_se, 0)
-        pval = norm.sf(np.abs(stat))
+        # As in greater, the p-value comes from the unclipped statistic.
+        stat_unclipped = float(contrast @ (lfc - lfc_null) / wald_se)
+        stat = min(stat_unclipped, 0)
+        pval = norm.sf(-stat_unclipped)
         return stat, pval
 
     def greater_abs(lfc_null):
@@ -255,7 +261,8 @@ def wald_test(
     def less_abs(lfc_null):
         stat_above, pval_above = greater(-abs(lfc_null))
         stat_below, pval_below = less(abs(lfc_null))
-        return min(stat_above, stat_below, key=abs), max(pval_above, pval_below)
+        # DESeq2's lessAbs statistic is never negative.
+        return abs(min(stat_above, stat_below, key=abs)), max(pval_above, pval_below)
 
     wald_statistic: float
     wald_p_value: float
