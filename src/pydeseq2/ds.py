@@ -570,6 +570,13 @@ class DeseqStats:
 
         self.p_values[self.dds.cooks_outlier()] = np.nan
 
+        # Genes that became all zero after outlier replacement keep p-value 1,
+        # as in DESeq2, where results() sets the p-value of genes that are zero
+        # after replacement to 1 after its Cook's filtering. Without this, the
+        # filtering above overwrites the 1 set by run_wald_test with NaN.
+        if self.dds.refit_cooks and self.dds.var["replaced"].sum() > 0:
+            self.p_values.loc[self.dds.new_all_zeroes_genes] = 1.0
+
     def _fit_prior_var(self, coeff_idx: str, min_var: float = 1e-6, max_var: float = 400.0) -> float:
         """Estimate the prior variance of the apeGLM model.
 

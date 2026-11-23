@@ -276,6 +276,32 @@ def test_cooks_outlier_with_higher_counts(counts_df, metadata, design, is_outlie
     assert dds.cooks_outlier().iloc[0] == is_outlier
 
 
+def test_new_all_zero_gene_keeps_pvalue_one_after_summary():
+    """Test that a gene that is all zero after outlier replacement keeps p-value 1 after summary, as in DESeq2 (#514)."""
+    rng = np.random.default_rng(4)
+    n_genes = 60
+    groups = (8, 8)
+    group = np.repeat(np.arange(len(groups)), groups)
+    base = rng.lognormal(4, 1.5, n_genes)
+    lfc = rng.normal(0, 0.5, (len(groups), n_genes))
+    lfc[0] = 0
+    mu = base * np.exp(lfc[group])
+    disp = 0.05 + 1 / base
+    counts = rng.negative_binomial(1 / disp, 1 / (1 + disp * mu))
+    samples = [f"s{i}" for i in range(len(group))]
+    counts = pd.DataFrame(counts, index=samples, columns=[f"g{j}" for j in range(n_genes)])
+    metadata = pd.DataFrame({"condition": np.array(list("ABCDEF"))[group]}, index=samples)
+    counts["single"] = [0] * 15 + [100]
+
+    dds = DeseqDataSet(counts=counts, metadata=metadata, quiet=True)
+    dds.deseq2()
+    assert list(dds.new_all_zeroes_genes) == ["single"]
+
+    ds = DeseqStats(dds, contrast=["condition", "B", "A"], quiet=True)
+    ds.summary()
+    assert ds.results_df.loc["single", "pvalue"] == 1.0
+
+
 def test_lfc_shrink_default_coeff(counts_df, metadata):
     """Test that lfc_shrink shrinks the coefficient tested by the contrast when coeff is not given."""
     dds = DeseqDataSet(counts=counts_df, metadata=metadata, design="~group + condition", quiet=True)
