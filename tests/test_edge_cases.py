@@ -527,7 +527,8 @@ def test_new_all_zero_gene():
     assert ds.results_df.loc["geneX", "log2FoldChange"] == 0
     assert ds.results_df.loc["geneX", "lfcSE"] == 0
     assert ds.results_df.loc["geneX", "stat"] == 0
-    assert np.isnan(ds.results_df.loc["geneX", "pvalue"])
+    # DESeq2 reports p-value 1 for genes that are zero after replacement (#514)
+    assert ds.results_df.loc["geneX", "pvalue"] == 1.0
     assert np.isnan(ds.results_df.loc["geneX", "padj"])
 
 
