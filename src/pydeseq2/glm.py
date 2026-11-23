@@ -237,18 +237,24 @@ def wald_test(
     # Evaluate standard error and Wald statistic
     wald_se: float = np.sqrt(Hc.T @ M @ Hc)
 
+    # Apply the contrast first: lfc_null and the alternative hypothesis are
+    # properties of the contrasted log fold change, not of each coefficient.
+    # Applying them per coefficient first is only correct for a contrast with a
+    # single non-zero entry, and tests a different hypothesis otherwise.
+    contrast_lfc = float(contrast @ lfc)
+
     def greater(lfc_null):
-        stat = contrast @ np.fmax((lfc - lfc_null) / wald_se, 0)
+        stat = max((contrast_lfc - lfc_null) / wald_se, 0)
         pval = norm.sf(stat)
         return stat, pval
 
     def less(lfc_null):
-        stat = contrast @ np.fmin((lfc - lfc_null) / wald_se, 0)
+        stat = min((contrast_lfc - lfc_null) / wald_se, 0)
         pval = norm.sf(np.abs(stat))
         return stat, pval
 
     def greater_abs(lfc_null):
-        stat = contrast @ (np.sign(lfc) * np.fmax((np.abs(lfc) - lfc_null) / wald_se, 0))
+        stat = np.sign(contrast_lfc) * max((np.abs(contrast_lfc) - lfc_null) / wald_se, 0)
         pval = 2 * norm.sf(np.abs(stat))  # Only case where the test is two-tailed
         return stat, pval
 
@@ -267,7 +273,7 @@ def wald_test(
             "less": less(lfc_null),
         }[alt_hypothesis]
     else:
-        wald_statistic = float(contrast @ (lfc - lfc_null) / wald_se)
+        wald_statistic = (contrast_lfc - lfc_null) / wald_se
         wald_p_value = 2 * norm.sf(np.abs(wald_statistic))
 
     return wald_p_value, wald_statistic, wald_se
