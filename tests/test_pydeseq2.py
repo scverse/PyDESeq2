@@ -238,6 +238,45 @@ def test_alt_hypothesis(alt_hypothesis, counts_df, metadata, tol=0.02):
     ).max() < tol
 
 
+@pytest.mark.parametrize(
+    "alt_hypothesis,lfc_null",
+    [
+        (None, 0.5),
+        ("greater", 0.5),
+        ("less", -0.5),
+        ("greaterAbs", 0.5),
+        ("lessAbs", 0.5),
+    ],
+)
+def test_wald_lfc_null_applies_to_contrast(alt_hypothesis, lfc_null, counts_df, metadata):
+    """Test that lfc_null and alt_hypothesis apply to the contrasted LFC, not to each coefficient.
+
+    The same comparison written with "~condition" (contrast [0, 1]) and with
+    "~0 + condition" (contrast [-1, 1]) must give the same statistics and
+    p-values for every alternative hypothesis. Regression test for #483.
+    """
+    results = {}
+    for design in ["~condition", "~0 + condition"]:
+        dds = DeseqDataSet(counts=counts_df, metadata=metadata, design=design, n_cpus=2)
+        dds.deseq2()
+        ds = DeseqStats(
+            dds,
+            contrast=["condition", "B", "A"],
+            lfc_null=lfc_null,
+            alt_hypothesis=alt_hypothesis,
+            n_cpus=2,
+        )
+        ds.summary()
+        results[design] = ds.results_df
+
+    ref = results["~condition"]
+    other = results["~0 + condition"]
+    assert (ref["stat"].isna() == other["stat"].isna()).all()
+    assert (ref["pvalue"].isna() == other["pvalue"].isna()).all()
+    assert (ref["stat"] - other["stat"]).abs().max() < 1e-4
+    assert (ref["pvalue"] - other["pvalue"]).abs().max() < 1e-4
+
+
 def test_deseq_no_refit_cooks(counts_df, metadata, tol=0.02):
     """Test that the outputs of the DESeq2 function *without cooks refit* match those of the original R package, up to a tolerance in relative error.
     Note: this is just to check that the workflow runs bug-free, as we expect no outliers in the synthetic dataset.
