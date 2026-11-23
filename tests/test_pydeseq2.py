@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from formulaic import model_matrix
+from scipy.stats import norm
 
 import tests
 from pydeseq2.datasets import load_example_data
@@ -236,6 +237,51 @@ def test_alt_hypothesis(alt_hypothesis, counts_df, metadata, tol=0.02):
         abs(r_res.pvalue[r_res.stat != 0] - ds.results_df.pvalue[ds.results_df.stat != 0])
         / r_res.pvalue[r_res.stat != 0]
     ).max() < tol
+
+
+def test_one_sided_pvalues_from_unclipped_statistic():
+    """Test that one-sided and lessAbs p-values come from the unclipped Wald statistic, as in DESeq2 (#515).
+
+    On main, every gene whose statistic is clipped to 0 gets p-value 0.5; DESeq2
+    computes the p-value from the unclipped statistic, giving values from 0.5 to 1.
+    """
+    rng = np.random.default_rng(3)
+    n_genes = 100
+    groups = (4, 4)
+    group = np.repeat(np.arange(len(groups)), groups)
+    base = rng.lognormal(4, 1.5, n_genes)
+    lfc = rng.normal(0, 0.5, (len(groups), n_genes))
+    lfc[0] = 0
+    mu = base * np.exp(lfc[group])
+    disp = 0.05 + 1 / base
+    counts = rng.negative_binomial(1 / disp, 1 / (1 + disp * mu))
+    samples = [f"s{i}" for i in range(len(group))]
+    counts = pd.DataFrame(counts, index=samples, columns=[f"g{j}" for j in range(n_genes)])
+    metadata = pd.DataFrame({"condition": np.array(list("ABCDEF"))[group]}, index=samples)
+
+    dds = DeseqDataSet(counts=counts, metadata=metadata, quiet=True)
+    dds.deseq2()
+    for alternative, lfc_null in [("greater", 0.5), ("less", -0.5), ("lessAbs", 0.5)]:
+        ds = DeseqStats(
+            dds,
+            contrast=["condition", "B", "A"],
+            lfc_null=lfc_null,
+            alt_hypothesis=alternative,
+            quiet=True,
+        )
+        ds.summary()
+        res = ds.results_df
+        lfc_hat, se, t = res["log2FoldChange"], res["lfcSE"], abs(lfc_null)
+        expected = {
+            "greater": norm.sf((lfc_hat - t) / se),
+            "less": norm.sf((-t - lfc_hat) / se),
+            "lessAbs": np.maximum(norm.sf((t - lfc_hat) / se), norm.sf((lfc_hat + t) / se)),
+        }[alternative]
+        zero = (res["stat"] == 0).to_numpy()
+        assert zero.sum() > 0  # the bug only shows where the statistic is clipped
+        np.testing.assert_allclose(res["pvalue"][zero], expected[zero], rtol=1e-6)
+        if alternative == "lessAbs":
+            assert (res["stat"] >= 0).all()
 
 
 def test_deseq_no_refit_cooks(counts_df, metadata, tol=0.02):
