@@ -790,6 +790,18 @@ def test_deseq2_norm_transform(train_counts, test_counts):
     assert size_factors.shape == (25,)
 
 
+def test_deseq2_norm_transform_zero_counts():
+    train = np.array([[10, 20, 30, 40, 50], [12, 18, 33, 41, 45], [9, 25, 28, 39, 55]])
+    new = np.array(
+        [[11, 21, 29, 42, 48], [0, 0, 0, 40, 50], [0, 20, 30, 40, 50], [0, 0, 0, 0, 0], [np.nan, 20, 30, 40, 50]]
+    )
+    logmeans, filtered_genes = deseq2_norm_fit(train)
+    normed_counts, size_factors = deseq2_norm_transform(new, logmeans, filtered_genes)
+
+    np.testing.assert_allclose(size_factors, [1.0096, 1.0018, 0.9957, np.nan, np.nan], atol=1e-4)
+    assert np.isfinite(normed_counts[:3]).all()
+
+
 def test_vst_fit(train_dds):
     # patient from 25 to 75
     train_dds.vst_fit()
