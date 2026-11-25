@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pandas as pd
 
@@ -64,6 +66,8 @@ def deseq2_norm_transform(
     """Return normalized counts and size factors from the median of ratios method.
 
     Can be applied on external dataset, using the ``logmeans`` and ``filtered_genes`` previously computed in the ``fit`` function.
+    Zero counts are ignored in each sample's median.
+    A sample with no positive count or with a NaN count gets a NaN size factor.
 
     Parameters
     ----------
@@ -91,7 +95,11 @@ def deseq2_norm_transform(
     else:
         log_ratios = log_counts[:, filtered_genes] - logmeans[filtered_genes]
     # Compute sample-wise median of log ratios
-    log_medians = np.median(log_ratios, axis=1)
+    finite_log_ratios = np.where(np.isfinite(log_ratios), log_ratios, np.nan)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        log_medians = np.nanmedian(finite_log_ratios, axis=1)
+    log_medians[np.isnan(np.asarray(log_ratios, dtype=float)).any(axis=1)] = np.nan
     # Return raw counts divided by size factors (exponential of log ratios)
     # and size factors
     size_factors = np.exp(log_medians)
