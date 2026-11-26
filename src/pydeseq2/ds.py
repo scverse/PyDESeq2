@@ -419,13 +419,24 @@ class DeseqStats:
             prior_var = self._fit_prior_var(coeff_idx=coeff_idx)
             prior_scale = np.minimum(np.sqrt(prior_var), 1)
 
+        shrink_idx = self.dds.non_zero_idx
+        counts = np.array(self.dds.X[:, shrink_idx], dtype=float)
+        if self.dds.refit_cooks and self.dds.var["replaced"].sum() > 0:
+            if len(self.dds.new_all_zeroes_genes) > 0:
+                keep = ~self.dds.var_names[shrink_idx].isin(self.dds.new_all_zeroes_genes)
+                shrink_idx = shrink_idx[keep]
+                counts = counts[:, keep]
+            if self.dds.var["refitted"].sum() > 0:
+                refitted = self.dds.var_names[shrink_idx].get_indexer(self.dds.counts_to_refit.var_names)
+                counts[:, refitted] = self.dds.counts_to_refit.X
+
         if not self.quiet:
             logger.info("Fitting MAP LFCs...")
         start = time.time()
         lfcs, inv_hessians, l_bfgs_b_converged_ = self.inference.lfc_shrink_nbinom_glm(
             design_matrix=design_matrix,
-            counts=self.dds.X[:, self.dds.non_zero_idx],
-            size=size[self.dds.non_zero_idx],
+            counts=counts,
+            size=size[shrink_idx],
             offset=offset,
             prior_no_shrink_scale=prior_no_shrink_scale,
             prior_scale=prior_scale,
@@ -449,7 +460,8 @@ class DeseqStats:
             )
 
         # Only update genes with valid (non-NaN) shrinkage results
-        valid_genes = self.dds.non_zero_genes[~nan_mask]
+        shrink_genes = self.dds.var_names[shrink_idx]
+        valid_genes = shrink_genes[~nan_mask]
         self.LFC.loc[valid_genes, coeff] = new_lfc_values[~nan_mask]
         self.SE.loc[valid_genes] = new_se_values[~nan_mask]
 
@@ -457,7 +469,7 @@ class DeseqStats:
             pd.array([pd.NA] * len(self.dds.var_names), dtype="boolean"),
             index=self.dds.var_names,
         )
-        self._LFC_shrink_converged.loc[self.dds.non_zero_genes] = l_bfgs_b_converged_
+        self._LFC_shrink_converged.loc[shrink_genes] = l_bfgs_b_converged_
 
         # Set a flag to indicate that LFCs were shrunk
         self.shrunk_LFCs = True
