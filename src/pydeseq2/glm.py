@@ -237,14 +237,16 @@ def wald_test(
     # Evaluate standard error and Wald statistic
     wald_se: float = np.sqrt(Hc.T @ M @ Hc)
 
+    # The one-sided statistics are clipped at 0, but as in DESeq2 the p-values come from the
+    # unclipped statistic, so a gene on the far side of the threshold gets a p-value above 0.5.
     def greater(lfc_null):
         stat = contrast @ np.fmax((lfc - lfc_null) / wald_se, 0)
-        pval = norm.sf(stat)
+        pval = norm.sf(contrast @ ((lfc - lfc_null) / wald_se))
         return stat, pval
 
     def less(lfc_null):
         stat = contrast @ np.fmin((lfc - lfc_null) / wald_se, 0)
-        pval = norm.sf(np.abs(stat))
+        pval = norm.cdf(contrast @ ((lfc - lfc_null) / wald_se))
         return stat, pval
 
     def greater_abs(lfc_null):

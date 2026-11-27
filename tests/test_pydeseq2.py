@@ -231,11 +231,9 @@ def test_alt_hypothesis(alt_hypothesis, counts_df, metadata, tol=0.02):
     if alt_hypothesis == "lessAbs":
         ds.results_df.stat = ds.results_df.stat.abs()
     assert (abs(r_res.stat - ds.results_df.stat) / abs(r_res.stat)).max() < tol
-    # Check for the same pvalue and padj where stat != 0
-    assert (
-        abs(r_res.pvalue[r_res.stat != 0] - ds.results_df.pvalue[ds.results_df.stat != 0])
-        / r_res.pvalue[r_res.stat != 0]
-    ).max() < tol
+    # Check for the same pvalue and padj, including genes whose statistic is clipped to 0
+    assert (abs(r_res.pvalue - ds.results_df.pvalue) / r_res.pvalue).max() < tol
+    assert (abs(r_res.padj - ds.results_df.padj) / r_res.padj).max() < tol
 
 
 def test_deseq_no_refit_cooks(counts_df, metadata, tol=0.02):
