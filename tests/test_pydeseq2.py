@@ -1069,6 +1069,48 @@ def test_lfc_shrink_uses_replaced_counts():
     assert res.loc["gene31", "log2FoldChange"] == 0.0
     assert res.loc["gene31", "lfcSE"] == 0.0
 
+    # Prior variance estimation must exclude new_all_zeroes_genes
+    ds_prior = DeseqStats(dds, contrast=["condition", "B", "A"], quiet=True)
+    ds_prior.summary()
+    pv_with_zero_gene = ds_prior._fit_prior_var(coeff_idx=1)
+    # Manually mask new_all_zeroes_genes to NaN and verify identical prior variance
+    ds_prior.LFC.loc[dds.new_all_zeroes_genes, :] = np.nan
+    pv_masked = ds_prior._fit_prior_var(coeff_idx=1)
+    np.testing.assert_allclose(pv_with_zero_gene, pv_masked, rtol=0, atol=1e-12)
+
+
+@pytest.mark.parametrize("adapt", [True, False])
+def test_lfc_shrink_all_genes_new_all_zeroes(adapt):
+    """Test that lfc_shrink exits cleanly without ValueError when all genes become zero after replacement."""
+    n_per_group = 10
+    n_genes = 20
+    counts = np.zeros((2 * n_per_group, n_genes), dtype=int)
+    # Single spike in B_0 per gene; after Cook's replacement all 20 genes become all-zero
+    counts[n_per_group, :] = 50000
+    genes = [f"gene{i}" for i in range(n_genes)]
+    samples = [f"A{i}" for i in range(n_per_group)] + [f"B{i}" for i in range(n_per_group)]
+    counts_df = pd.DataFrame(counts, index=samples, columns=genes)
+    metadata = pd.DataFrame({"condition": ["A"] * n_per_group + ["B"] * n_per_group}, index=samples)
+
+    dds = DeseqDataSet(
+        counts=counts_df,
+        metadata=metadata,
+        design="~condition",
+        fit_type="mean",
+        size_factors_fit_type="iterative",
+        refit_cooks=True,
+        quiet=True,
+    )
+    dds.deseq2()
+    assert len(dds.new_all_zeroes_genes) == n_genes
+
+    ds = DeseqStats(dds, contrast=["condition", "B", "A"], quiet=True)
+    ds.summary()
+    ds.lfc_shrink(coeff="condition[T.B]", adapt=adapt)
+    assert ds.shrunk_LFCs is True
+    assert (ds.results_df["log2FoldChange"] == 0.0).all()
+    assert (ds.results_df["lfcSE"] == 0.0).all()
+
 
 def assert_res_almost_equal(py_res, r_res, tol=0.02):
     # check that the same p-values are NaN

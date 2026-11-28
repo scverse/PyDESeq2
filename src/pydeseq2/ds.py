@@ -412,13 +412,6 @@ class DeseqStats:
         size = 1.0 / self.dds.var["dispersions"].to_numpy()
         offset = np.log(self.dds.obs["size_factors"]).to_numpy()
 
-        # Set priors
-        prior_no_shrink_scale = 15
-        prior_scale = 1
-        if adapt:
-            prior_var = self._fit_prior_var(coeff_idx=coeff_idx)
-            prior_scale = np.minimum(np.sqrt(prior_var), 1)
-
         shrink_idx = self.dds.non_zero_idx
         counts = np.array(self.dds.X[:, shrink_idx], dtype=float)
         if self.dds.refit_cooks and self.dds.var["replaced"].sum() > 0:
@@ -429,6 +422,27 @@ class DeseqStats:
             if self.dds.var["refitted"].sum() > 0:
                 refitted = self.dds.var_names[shrink_idx].get_indexer(self.dds.counts_to_refit.var_names)
                 counts[:, refitted] = self.dds.counts_to_refit.X
+
+        if len(shrink_idx) == 0:
+            self._LFC_shrink_converged = pd.Series(
+                pd.array([pd.NA] * len(self.dds.var_names), dtype="boolean"),
+                index=self.dds.var_names,
+            )
+            self.shrunk_LFCs = True
+            if hasattr(self, "results_df"):
+                self.results_df["log2FoldChange"] = self.LFC.iloc[:, coeff_idx] / np.log(2)
+                self.results_df["lfcSE"] = self.SE / np.log(2)
+                if not self.quiet:
+                    print(f"Shrunk log2 fold change & Wald test p-value: {coeff}")
+                    print(self.results_df)
+            return
+
+        # Set priors
+        prior_no_shrink_scale = 15
+        prior_scale = 1
+        if adapt:
+            prior_var = self._fit_prior_var(coeff_idx=coeff_idx)
+            prior_scale = np.minimum(np.sqrt(prior_var), 1)
 
         if not self.quiet:
             logger.info("Fitting MAP LFCs...")
@@ -601,6 +615,14 @@ class DeseqStats:
         Estimated prior variance.
         """
         keep = ~self.LFC.iloc[:, coeff_idx].isna()
+        if (
+            self.dds.refit_cooks
+            and hasattr(self.dds, "new_all_zeroes_genes")
+            and len(self.dds.new_all_zeroes_genes) > 0
+        ):
+            keep = keep & ~self.dds.var_names.isin(self.dds.new_all_zeroes_genes)
+        if not keep.any():
+            return min_var
         S = self.LFC[keep].iloc[:, coeff_idx] ** 2
         D = self.SE[keep] ** 2
 
