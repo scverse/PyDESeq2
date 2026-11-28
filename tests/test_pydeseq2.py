@@ -1080,7 +1080,7 @@ def test_lfc_shrink_uses_replaced_counts():
 
 
 @pytest.mark.parametrize("adapt", [True, False])
-def test_lfc_shrink_all_genes_new_all_zeroes(adapt):
+def test_lfc_shrink_all_genes_new_all_zeroes(adapt, capsys):
     """Test that lfc_shrink exits cleanly without ValueError when all genes become zero after replacement."""
     n_per_group = 10
     n_genes = 20
@@ -1104,12 +1104,15 @@ def test_lfc_shrink_all_genes_new_all_zeroes(adapt):
     dds.deseq2()
     assert len(dds.new_all_zeroes_genes) == n_genes
 
-    ds = DeseqStats(dds, contrast=["condition", "B", "A"], quiet=True)
+    ds = DeseqStats(dds, contrast=["condition", "B", "A"], quiet=adapt)
     ds.summary()
+    assert ds._fit_prior_var(coeff_idx=1) == pytest.approx(1e-6)
     ds.lfc_shrink(coeff="condition[T.B]", adapt=adapt)
     assert ds.shrunk_LFCs is True
     assert (ds.results_df["log2FoldChange"] == 0.0).all()
     assert (ds.results_df["lfcSE"] == 0.0).all()
+    if not adapt:
+        assert "Shrunk log2 fold change" in capsys.readouterr().out
 
 
 def assert_res_almost_equal(py_res, r_res, tol=0.02):
