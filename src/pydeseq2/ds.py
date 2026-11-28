@@ -412,6 +412,31 @@ class DeseqStats:
         size = 1.0 / self.dds.var["dispersions"].to_numpy()
         offset = np.log(self.dds.obs["size_factors"]).to_numpy()
 
+        shrink_idx = self.dds.non_zero_idx
+        counts = np.array(self.dds.X[:, shrink_idx], dtype=float)
+        if self.dds.refit_cooks and self.dds.var["replaced"].sum() > 0:
+            if len(self.dds.new_all_zeroes_genes) > 0:
+                keep = ~self.dds.var_names[shrink_idx].isin(self.dds.new_all_zeroes_genes)
+                shrink_idx = shrink_idx[keep]
+                counts = counts[:, keep]
+            if self.dds.var["refitted"].sum() > 0:
+                refitted = self.dds.var_names[shrink_idx].get_indexer(self.dds.counts_to_refit.var_names)
+                counts[:, refitted] = self.dds.counts_to_refit.X
+
+        if len(shrink_idx) == 0:
+            self._LFC_shrink_converged = pd.Series(
+                pd.array([pd.NA] * len(self.dds.var_names), dtype="boolean"),
+                index=self.dds.var_names,
+            )
+            self.shrunk_LFCs = True
+            if hasattr(self, "results_df"):
+                self.results_df["log2FoldChange"] = self.LFC.iloc[:, coeff_idx] / np.log(2)
+                self.results_df["lfcSE"] = self.SE / np.log(2)
+                if not self.quiet:
+                    print(f"Shrunk log2 fold change & Wald test p-value: {coeff}")
+                    print(self.results_df)
+            return
+
         # Set priors
         prior_no_shrink_scale = 15
         prior_scale = 1
@@ -424,8 +449,8 @@ class DeseqStats:
         start = time.time()
         lfcs, inv_hessians, l_bfgs_b_converged_ = self.inference.lfc_shrink_nbinom_glm(
             design_matrix=design_matrix,
-            counts=self.dds.X[:, self.dds.non_zero_idx],
-            size=size[self.dds.non_zero_idx],
+            counts=counts,
+            size=size[shrink_idx],
             offset=offset,
             prior_no_shrink_scale=prior_no_shrink_scale,
             prior_scale=prior_scale,
@@ -449,7 +474,8 @@ class DeseqStats:
             )
 
         # Only update genes with valid (non-NaN) shrinkage results
-        valid_genes = self.dds.non_zero_genes[~nan_mask]
+        shrink_genes = self.dds.var_names[shrink_idx]
+        valid_genes = shrink_genes[~nan_mask]
         self.LFC.loc[valid_genes, coeff] = new_lfc_values[~nan_mask]
         self.SE.loc[valid_genes] = new_se_values[~nan_mask]
 
@@ -457,7 +483,7 @@ class DeseqStats:
             pd.array([pd.NA] * len(self.dds.var_names), dtype="boolean"),
             index=self.dds.var_names,
         )
-        self._LFC_shrink_converged.loc[self.dds.non_zero_genes] = l_bfgs_b_converged_
+        self._LFC_shrink_converged.loc[shrink_genes] = l_bfgs_b_converged_
 
         # Set a flag to indicate that LFCs were shrunk
         self.shrunk_LFCs = True
@@ -589,6 +615,14 @@ class DeseqStats:
         Estimated prior variance.
         """
         keep = ~self.LFC.iloc[:, coeff_idx].isna()
+        if (
+            self.dds.refit_cooks
+            and hasattr(self.dds, "new_all_zeroes_genes")
+            and len(self.dds.new_all_zeroes_genes) > 0
+        ):
+            keep = keep & ~self.dds.var_names.isin(self.dds.new_all_zeroes_genes)
+        if not keep.any():
+            return min_var
         S = self.LFC[keep].iloc[:, coeff_idx] ** 2
         D = self.SE[keep] ** 2
 

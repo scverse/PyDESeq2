@@ -1014,6 +1014,107 @@ def test_write_h5ad(counts_df, metadata, tmp_path):
             assert adata.uns[key][coeff] == pytest.approx(dds.uns[key][coeff])
 
 
+def test_lfc_shrink_uses_replaced_counts():
+    """Test that lfc_shrink uses Cook-replaced counts for refitted genes and preserves new_all_zeroes_genes."""
+    rng = np.random.default_rng(42)
+    n_per_group = 10
+    n_genes = 60
+    mu_a = np.full(n_genes, 180.0)
+    mu_b = np.full(n_genes, 180.0)
+    mu_b[:15] = 45.0  # Strongly downregulated in B (true log2FC = -2.0)
+    mu_b[15:30] = 720.0  # Strongly upregulated in B (true log2FC = +2.0)
+
+    disp = 0.05
+    r = 1.0 / disp
+    counts_a = rng.negative_binomial(r, r / (r + mu_a), size=(n_per_group, n_genes))
+    counts_b = rng.negative_binomial(r, r / (r + mu_b), size=(n_per_group, n_genes))
+    counts = np.vstack([counts_a, counts_b])
+
+    # Single-sample Cook spikes in B (group has n=10 >= 7 so outliers are replaced):
+    # - gene 0: strongly downregulated (-2.0) with opposite spike
+    counts[n_per_group, 0] = 50000
+    # - gene 30: null (0.0) with spike
+    counts[n_per_group, 30] = 50000
+    # - gene 31: all zero except one spike -> becomes new_all_zeroes after replacement
+    counts[:, 31] = 0
+    counts[n_per_group, 31] = 50000
+
+    genes = [f"gene{i}" for i in range(n_genes)]
+    samples = [f"A{i}" for i in range(n_per_group)] + [f"B{i}" for i in range(n_per_group)]
+    counts_df = pd.DataFrame(counts, index=samples, columns=genes)
+    metadata = pd.DataFrame({"condition": ["A"] * n_per_group + ["B"] * n_per_group}, index=samples)
+
+    dds = DeseqDataSet(
+        counts=counts_df, metadata=metadata, design="~condition", fit_type="mean", refit_cooks=True, quiet=True
+    )
+    dds.deseq2()
+    assert bool(dds.var.loc["gene0", "refitted"])
+    assert bool(dds.var.loc["gene30", "refitted"])
+    assert "gene31" in dds.new_all_zeroes_genes
+
+    ds = DeseqStats(dds, contrast=["condition", "B", "A"], quiet=True)
+    ds.summary()
+    unshrunk_stat_g0 = ds.results_df.loc["gene0", "stat"]
+    assert unshrunk_stat_g0 < -5.0
+
+    ds.lfc_shrink(coeff="condition[T.B]")
+    res = ds.results_df
+
+    # gene0 must stay negative (consistent with replaced Wald test, not flipped to +4.x)
+    assert res.loc["gene0", "log2FoldChange"] < -1.0
+    assert np.sign(res.loc["gene0", "log2FoldChange"]) == np.sign(unshrunk_stat_g0)
+    # gene30 (null) must stay near 0 (not inflated to +4.x)
+    assert abs(res.loc["gene30", "log2FoldChange"]) < 1.0
+    # gene31 (all zero after replacement) must keep zero LFC and SE
+    assert res.loc["gene31", "log2FoldChange"] == 0.0
+    assert res.loc["gene31", "lfcSE"] == 0.0
+
+    # Prior variance estimation must exclude new_all_zeroes_genes
+    ds_prior = DeseqStats(dds, contrast=["condition", "B", "A"], quiet=True)
+    ds_prior.summary()
+    pv_with_zero_gene = ds_prior._fit_prior_var(coeff_idx=1)
+    # Manually mask new_all_zeroes_genes to NaN and verify identical prior variance
+    ds_prior.LFC.loc[dds.new_all_zeroes_genes, :] = np.nan
+    pv_masked = ds_prior._fit_prior_var(coeff_idx=1)
+    np.testing.assert_allclose(pv_with_zero_gene, pv_masked, rtol=0, atol=1e-12)
+
+
+@pytest.mark.parametrize("adapt", [True, False])
+def test_lfc_shrink_all_genes_new_all_zeroes(adapt, capsys):
+    """Test that lfc_shrink exits cleanly without ValueError when all genes become zero after replacement."""
+    n_per_group = 10
+    n_genes = 20
+    counts = np.zeros((2 * n_per_group, n_genes), dtype=int)
+    # Single spike in B_0 per gene; after Cook's replacement all 20 genes become all-zero
+    counts[n_per_group, :] = 50000
+    genes = [f"gene{i}" for i in range(n_genes)]
+    samples = [f"A{i}" for i in range(n_per_group)] + [f"B{i}" for i in range(n_per_group)]
+    counts_df = pd.DataFrame(counts, index=samples, columns=genes)
+    metadata = pd.DataFrame({"condition": ["A"] * n_per_group + ["B"] * n_per_group}, index=samples)
+
+    dds = DeseqDataSet(
+        counts=counts_df,
+        metadata=metadata,
+        design="~condition",
+        fit_type="mean",
+        size_factors_fit_type="iterative",
+        refit_cooks=True,
+        quiet=True,
+    )
+    dds.deseq2()
+    assert len(dds.new_all_zeroes_genes) == n_genes
+
+    ds = DeseqStats(dds, contrast=["condition", "B", "A"], quiet=adapt)
+    ds.summary()
+    assert ds._fit_prior_var(coeff_idx=1) == pytest.approx(1e-6)
+    ds.lfc_shrink(coeff="condition[T.B]", adapt=adapt)
+    assert ds.shrunk_LFCs is True
+    assert (ds.results_df["log2FoldChange"] == 0.0).all()
+    assert (ds.results_df["lfcSE"] == 0.0).all()
+    if not adapt:
+        assert "Shrunk log2 fold change" in capsys.readouterr().out
+
+
 def assert_res_almost_equal(py_res, r_res, tol=0.02):
     # check that the same p-values are NaN
     assert (py_res.pvalue.isna() == r_res.pvalue.isna()).all()
