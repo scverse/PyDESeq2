@@ -513,12 +513,13 @@ def test_new_all_zero_gene():
         refit_cooks=True,
     )
 
-    with pytest.warns(UserWarning):
-        # Will warn that parametric trend fit failed
-        dds.deseq2()
+    dds.deseq2()
 
     ds = DeseqStats(dds, contrast=["condition", "B", "A"])
     ds.summary()
+
+    # geneX now has a normalized mean of 0, so refitting the trend must leave it out
+    dds.fit_dispersion_trend()
 
     # Check that the outlier gene leads to only zeros and that it is correctly handled
     # in DeseqStats

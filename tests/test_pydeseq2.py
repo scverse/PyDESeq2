@@ -123,6 +123,40 @@ def test_size_factors_control_genes(counts_df, metadata):
     )
 
 
+def test_parametric_trend_ignores_single_count_gene():
+    """Test that a gene with a single positive count does not change the parametric trend, as in DESeq2.
+
+    DESeq2 starts from the curve (0.1, 1) and, before each fit, keeps the genes whose dispersion is between 1e-4 and
+    15 times the current curve, so the single-count gene never enters. On these counts (from #512), DESeq2 1.50.2
+    gives (0.0505, 1.8002) with and without that gene.
+    """
+    rng = np.random.default_rng(1)
+    group = np.repeat([0, 1], 6)
+    base = rng.lognormal(4, 1.5, 100)
+    lfc = rng.normal(0, 0.5, (2, 100))
+    lfc[0] = 0
+    disp = 0.05 + 1 / base
+    samples = [f"sample{i}" for i in range(12)]
+    counts = pd.DataFrame(
+        rng.negative_binomial(1 / disp, 1 / (1 + disp * base * np.exp(lfc[group]))),
+        index=samples,
+        columns=[f"gene{j}" for j in range(100)],
+    )
+    counts["geneX"] = 0
+    counts.loc["sample11", "geneX"] = 30
+    metadata = pd.DataFrame({"condition": np.repeat(["A", "B"], 6)}, index=samples)
+
+    trend_coeffs = []
+    for genes in [counts.columns[:-1], counts.columns]:
+        dds = DeseqDataSet(counts=counts[genes], metadata=metadata, design="~condition")
+        dds.fit_size_factors()
+        dds.fit_genewise_dispersions()
+        dds.fit_dispersion_trend()
+        trend_coeffs.append(dds.uns["trend_coeffs"])
+
+    assert trend_coeffs[1] == pytest.approx(trend_coeffs[0])
+
+
 def test_deseq_independent_filtering_parametric_fit(counts_df, metadata, tol=0.02):
     """Test that the outputs of the DESeq2 function match those of the original R package, up to a tolerance in relative error."""
 
