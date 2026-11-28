@@ -527,8 +527,15 @@ def test_new_all_zero_gene():
     assert ds.results_df.loc["geneX", "log2FoldChange"] == 0
     assert ds.results_df.loc["geneX", "lfcSE"] == 0
     assert ds.results_df.loc["geneX", "stat"] == 0
-    assert np.isnan(ds.results_df.loc["geneX", "pvalue"])
+    assert ds.results_df.loc["geneX", "pvalue"] == 1
     assert np.isnan(ds.results_df.loc["geneX", "padj"])
+
+    ds_lrt = DeseqStats(dds, contrast=["condition", "B", "A"], reduced="~1")
+    with np.errstate(divide="ignore", invalid="ignore"):
+        # The reduced fit of geneX has mu 0, so its log-likelihood is NaN before the stat is set to 0
+        ds_lrt.summary()
+    assert ds_lrt.results_df.loc["geneX", "stat"] == 0
+    assert ds_lrt.results_df.loc["geneX", "pvalue"] == 1
 
 
 def test_zero_inflated():
