@@ -157,6 +157,25 @@ def test_parametric_trend_ignores_single_count_gene():
     assert trend_coeffs[1] == pytest.approx(trend_coeffs[0])
 
 
+def test_parametric_trend_falls_back_to_mean(monkeypatch):
+    """Test that a parametric trend fit that does not converge falls back to a mean trend with a warning."""
+    rng = np.random.default_rng(0)
+    samples = [f"sample{i}" for i in range(6)]
+    counts = pd.DataFrame(
+        rng.negative_binomial(5, 0.05, (6, 20)), index=samples, columns=[f"gene{j}" for j in range(20)]
+    )
+    metadata = pd.DataFrame({"condition": np.repeat(["A", "B"], 3)}, index=samples)
+    dds = DeseqDataSet(counts=counts, metadata=metadata, design="~condition")
+    dds.fit_size_factors()
+    dds.fit_genewise_dispersions()
+    monkeypatch.setattr(dds.inference, "dispersion_trend_gamma_glm", lambda *args: (np.array([0.1, 1.0]), None, False))
+
+    with pytest.warns(UserWarning, match="did not converge"):
+        dds.fit_dispersion_trend()
+
+    assert dds.uns["disp_function_type"] == "mean"
+
+
 def test_deseq_independent_filtering_parametric_fit(counts_df, metadata, tol=0.02):
     """Test that the outputs of the DESeq2 function match those of the original R package, up to a tolerance in relative error."""
 
